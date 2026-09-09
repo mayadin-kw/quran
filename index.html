@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#123c35" />
+  <title>القرآن الكريم</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Cairo:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main id="home" class="home-screen">
+    <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
+    <section class="welcome-card" aria-label="الصفحة الرئيسية">
+      <img class="brand-logo" src="Logo.png" alt="شعار القرآن الكريم" />
+      <p class="welcome-text">رفيقك لقراءة كتاب الله وحفظه</p>
+      <div class="home-actions">
+        <button class="primary-action" id="readButton"><span class="button-icon">۞</span>قراءة<span class="arrow">←</span></button>
+        <button class="secondary-action" id="memorizeButton"><span class="button-icon">✦</span>تحفيظ<span class="arrow">←</span></button>
+      </div>
+      <p class="bismillah">بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ</p>
+    </section>
+  </main>
+
+  <main id="reader" class="reader-screen hidden" aria-live="polite">
+    <header class="reader-header">
+      <button class="icon-button" id="menuButton" aria-label="فتح القائمة"><i></i><i></i><i></i></button>
+      <div class="reader-title"><span>القرآن الكريم</span><small id="surahLabel">سورة الفاتحة</small></div>
+      <button class="icon-button back-button" id="backButton" aria-label="العودة للصفحة الرئيسية">←</button>
+    </header>
+    <section class="page-area" id="swipeArea">
+      <button class="page-arrow next" id="nextPage" aria-label="الصفحة التالية">‹</button>
+      <article class="quran-page" id="quranPage">
+        <div class="page-ornament top">۞</div>
+        <div class="page-number" id="pageNumber">١</div>
+        <div class="quran-text" id="quranText">جارٍ تجهيز صفحات المصحف...</div>
+        <div class="page-ornament bottom">۞</div>
+      </article>
+      <button class="page-arrow previous" id="previousPage" aria-label="الصفحة السابقة">›</button>
+    </section>
+    <footer class="reader-footer"><span id="footerPage">الصفحة ١ من ٦٠٤</span><span>اسحب للتنقل بين الصفحات</span></footer>
+  </main>
+
+  <div class="overlay" id="overlay"></div>
+  <aside class="side-menu" id="sideMenu" aria-label="القائمة الجانبية">
+    <div class="menu-heading"><img src="Logo.png" alt="" /><button id="closeMenu" aria-label="إغلاق القائمة">×</button></div>
+    <div class="menu-content">
+      <h2>الانتقال إلى صفحة</h2>
+      <label for="pageSelect">رقم الصفحة</label>
+      <select id="pageSelect" aria-label="اختر رقم الصفحة"></select>
+      <button id="goToPage" class="go-button">انتقال <span>←</span></button>
+      <div class="menu-divider"></div>
+      <p class="menu-note">اختر رقم الصفحة ثم اضغط انتقال.</p>
+    </div>
+  </aside>
+  <div class="toast" id="toast" role="status"></div>
+  <script src="app.js"></script>
+</body>
+</html>
