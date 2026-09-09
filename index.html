@@ -31,14 +31,11 @@
       <button class="icon-button back-button" id="backButton" aria-label="العودة للصفحة الرئيسية">←</button>
     </header>
     <section class="page-area" id="swipeArea">
-      <button class="page-arrow next" id="nextPage" aria-label="الصفحة التالية">‹</button>
       <article class="quran-page" id="quranPage">
         <img id="quranImage" src="" alt="صفحة من المصحف الشريف" draggable="false" />
         <div class="page-loading" id="pageLoading">جارٍ تحميل الصفحة...</div>
       </article>
-      <button class="page-arrow previous" id="previousPage" aria-label="الصفحة السابقة">›</button>
     </section>
-    <footer class="reader-footer"><span id="footerPage">الصفحة ١ من ٦٠٤</span><span>اسحب للتنقل بين الصفحات</span></footer>
   </main>
 
   <div class="overlay" id="overlay"></div>
@@ -53,6 +50,14 @@
       <p class="menu-note">اختر رقم الصفحة ثم اضغط انتقال.</p>
     </div>
   </aside>
+  <div class="loading-overlay" id="loadingOverlay" aria-live="polite" aria-busy="true">
+    <div class="loading-card">
+      <div class="loading-emblem"><span>۞</span></div>
+      <h2>جاري الانتقال</h2>
+      <p id="loadingMessage">يتم تجهيز صفحة المصحف</p>
+      <div class="loading-line"><i></i></div>
+    </div>
+  </div>
   <div class="toast" id="toast" role="status"></div>
   <script src="page-map.js"></script>
   <script src="app.js"></script>
