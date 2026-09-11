@@ -10,6 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Cairo:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="reader.css" />
+  <link rel="stylesheet" href="ayah-interaction.css" />
   <style>.audio-credit{margin:16px 0 0;text-align:center;color:#73837d;font-size:10px}.audio-credit a{color:#a67d34;text-decoration:none;font-weight:700}</style>
 </head>
 <body>
@@ -36,7 +37,7 @@
       <article class="quran-page" id="quranPage">
         <img id="previewImage" class="swipe-preview" src="" alt="" aria-hidden="true" draggable="false" />
         <img id="quranImage" src="" alt="صفحة من المصحف الشريف" draggable="false" />
-        <div id="ayahLayer" class="ayah-layer" aria-label="اضغط على الآية للاستماع أو النسخ"></div>
+        <svg id="ayahLayer" class="ayah-layer" viewBox="0 0 345 550" preserveAspectRatio="none" aria-label="اضغط على الآية للاستماع أو النسخ"></svg>
         <div id="ayahSelection" class="ayah-selection" hidden>
           <div class="ayah-actions"><button id="listenAyah" type="button">▶ <span>استماع</span></button><button id="copyAyah" type="button">⧉ <span>نسخ</span></button></div>
         </div>
