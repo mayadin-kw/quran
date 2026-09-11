@@ -2,13 +2,15 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#123c35" />
   <title>القرآن الكريم</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Cairo:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="reader.css" />
+  <style>.audio-credit{margin:16px 0 0;text-align:center;color:#73837d;font-size:10px}.audio-credit a{color:#a67d34;text-decoration:none;font-weight:700}</style>
 </head>
 <body>
   <main id="home" class="home-screen">
@@ -32,7 +34,12 @@
     </header>
     <section class="page-area" id="swipeArea">
       <article class="quran-page" id="quranPage">
+        <img id="previewImage" class="swipe-preview" src="" alt="" aria-hidden="true" draggable="false" />
         <img id="quranImage" src="" alt="صفحة من المصحف الشريف" draggable="false" />
+        <div id="ayahLayer" class="ayah-layer" aria-label="اضغط على الآية للاستماع أو النسخ"></div>
+        <div id="ayahSelection" class="ayah-selection" hidden>
+          <div class="ayah-actions"><button id="listenAyah" type="button">▶ <span>استماع</span></button><button id="copyAyah" type="button">⧉ <span>نسخ</span></button></div>
+        </div>
         <div class="page-loading" id="pageLoading">جارٍ تحميل الصفحة...</div>
       </article>
     </section>
@@ -42,23 +49,49 @@
   <aside class="side-menu" id="sideMenu" aria-label="القائمة الجانبية">
     <div class="menu-heading"><img src="Logo.png" alt="" /><button id="closeMenu" aria-label="إغلاق القائمة">×</button></div>
     <div class="menu-content">
-      <h2>الانتقال إلى صفحة</h2>
-      <label for="pageSelect">رقم الصفحة</label>
-      <select id="pageSelect" aria-label="اختر رقم الصفحة"></select>
-      <button id="goToPage" class="go-button">انتقال <span>←</span></button>
-      <div class="menu-divider"></div>
-      <p class="menu-note">اختر رقم الصفحة ثم اضغط انتقال.</p>
+      <section id="mainMenu">
+        <h2>الانتقال إلى صفحة</h2>
+        <label for="pageSelect">رقم الصفحة</label>
+        <select id="pageSelect" aria-label="اختر رقم الصفحة"></select>
+        <button id="goToPage" class="go-button">انتقال <span>←</span></button>
+        <div class="menu-divider"></div>
+        <button id="openListening" class="menu-item" type="button"><span>◖</span> استماع <b>←</b></button>
+        <p class="menu-note">اختر رقم الصفحة أو استمع إلى سورة كاملة أو آيات محددة.</p>
+      </section>
+      <section id="listeningMenu" class="hidden">
+        <button id="backToMenu" class="menu-back" type="button">→ العودة للقائمة</button>
+        <h2>استماع</h2>
+        <label for="surahSelect">تحديد السورة</label>
+        <select id="surahSelect" aria-label="اختر السورة"></select>
+        <div class="listen-mode" role="group" aria-label="نوع الاستماع"><button data-mode="full" class="active" type="button">كاملة</button><button data-mode="range" type="button">تحديد</button></div>
+        <div id="rangeFields" class="range-fields hidden">
+          <label for="fromAyah">من آية</label><select id="fromAyah"></select>
+          <label for="toAyah">إلى آية</label><select id="toAyah" disabled></select>
+        </div>
+        <button id="playSelection" class="go-button play-selection" type="button">▶ تشغيل</button>
+        <p class="audio-credit">التلاوة: الحصري المعلّم · <a href="https://everyayah.com/" target="_blank" rel="noopener">EveryAyah</a></p>
+      </section>
     </div>
   </aside>
   <div class="loading-overlay" id="loadingOverlay" aria-live="polite" aria-busy="true">
     <div class="loading-card">
       <div class="loading-emblem"><span>۞</span></div>
-      <h2>جاري الانتقال</h2>
+      <h2 id="loadingTitle">جاري الانتقال</h2>
       <p id="loadingMessage">يتم تجهيز صفحة المصحف</p>
-      <div class="loading-line"><i></i></div>
+      <div class="loading-line"><i id="loadingProgress"></i></div>
+      <div class="loading-meta"><span id="loadingPercent">٠٪</span><span id="loadingEta">يرجى الانتظار</span></div>
     </div>
   </div>
   <div class="toast" id="toast" role="status"></div>
+  <div id="audioPlayer" class="audio-player hidden" aria-live="polite">
+    <button id="audioClose" class="audio-close" aria-label="إيقاف وإغلاق">×</button>
+    <div class="audio-info"><strong id="audioTitle">الحصري المعلّم</strong><small id="audioAyahLabel">—</small></div>
+    <button id="skipForward" class="audio-skip" aria-label="الآية التالية">↶</button>
+    <button id="audioToggle" class="audio-toggle" aria-label="إيقاف مؤقت">❚❚</button>
+    <button id="skipBack" class="audio-skip" aria-label="الآية السابقة">↷</button>
+    <div class="audio-progress"><i id="audioProgress"></i></div>
+  </div>
+  <audio id="quranAudio" preload="none"></audio>
   <script src="page-map.js"></script>
   <script src="app.js"></script>
 </body>

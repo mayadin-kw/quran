@@ -1,0 +1,16 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // صور المصحف متاحة للقراءة في الموقع فقط، ولا تسمح القواعد بأي رفع من الزوار.
+    match /quran-pages/{allPaths=**} {
+      allow read: if true;
+      allow write: if false;
+    }
+    // ملفات الحصري المعلّم للقراءة فقط؛ لا يستطيع الزائر رفع أو تعديل أي ملف.
+    match /audio/husary-muallim-128/{allPaths=**} {
+      allow read: if true;
+      allow write: if false;
+    }
+  }
+}
