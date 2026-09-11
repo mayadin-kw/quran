@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Cairo:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css" />
-  <link rel="stylesheet" href="reader.css" />
-  <link rel="stylesheet" href="ayah-interaction.css" />
+  <link rel="stylesheet" href="reader.css?v=20260911-menu-2" />
+  <link rel="stylesheet" href="ayah-interaction.css?v=20260911-coordinates-2" />
   <style>.audio-credit{margin:16px 0 0;text-align:center;color:#73837d;font-size:10px}.audio-credit a{color:#a67d34;text-decoration:none;font-weight:700}</style>
 </head>
 <body>
@@ -51,13 +51,17 @@
     <div class="menu-heading"><img src="Logo.png" alt="" /><button id="closeMenu" aria-label="إغلاق القائمة">×</button></div>
     <div class="menu-content">
       <section id="mainMenu">
+        <h2>القائمة</h2>
+        <button id="openJump" class="menu-item" type="button"><span>⌁</span> الانتقال إلى صفحة <b>←</b></button>
+        <button id="openListening" class="menu-item" type="button"><span>◖</span> استماع <b>←</b></button>
+        <p class="menu-note">اختر انتقالاً سريعاً إلى صفحة أو استمع إلى سورة وآيات محددة.</p>
+      </section>
+      <section id="jumpMenu" class="hidden">
+        <button id="backFromJump" class="menu-back" type="button">→ العودة للقائمة</button>
         <h2>الانتقال إلى صفحة</h2>
         <label for="pageSelect">رقم الصفحة</label>
         <select id="pageSelect" aria-label="اختر رقم الصفحة"></select>
         <button id="goToPage" class="go-button">انتقال <span>←</span></button>
-        <div class="menu-divider"></div>
-        <button id="openListening" class="menu-item" type="button"><span>◖</span> استماع <b>←</b></button>
-        <p class="menu-note">اختر رقم الصفحة أو استمع إلى سورة كاملة أو آيات محددة.</p>
       </section>
       <section id="listeningMenu" class="hidden">
         <button id="backToMenu" class="menu-back" type="button">→ العودة للقائمة</button>
@@ -73,6 +77,7 @@
         <p class="audio-credit">التلاوة: الحصري المعلّم · <a href="https://everyayah.com/" target="_blank" rel="noopener">EveryAyah</a></p>
       </section>
     </div>
+    <div class="reciter-picker"><label for="reciterSelect">صوت القارئ</label><select id="reciterSelect" aria-label="اختر صوت القارئ"></select></div>
   </aside>
   <div class="loading-overlay" id="loadingOverlay" aria-live="polite" aria-busy="true">
     <div class="loading-card">
@@ -93,7 +98,7 @@
     <div class="audio-progress"><i id="audioProgress"></i></div>
   </div>
   <audio id="quranAudio" preload="none"></audio>
-  <script src="page-map.js?v=20260911-ayah-map-2"></script>
-  <script src="app.js?v=20260911-reader-fix-3"></script>
+  <script src="page-map.js?v=20260911-ayah-map-3"></script>
+  <script src="app.js?v=20260911-reader-fix-4"></script>
 </body>
 </html>
