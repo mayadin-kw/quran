@@ -1,0 +1,5 @@
+/* Runtime layout overrides: the menu itself has no visual selection box. */
+.reader-screen .page-area{height:calc(100dvh - 72px - var(--audio-reserved,0px));min-height:0;padding:0}
+@media(max-width:600px){.reader-screen .page-area{height:calc(100dvh - 72px - var(--audio-reserved,0px));padding:0}}
+.ayah-selection{left:0;right:auto!important;bottom:auto!important;width:0!important;height:0!important;background:transparent!important;border:0!important;outline:0!important;box-shadow:none!important}
+.ayah-actions,.ayah-actions:after{outline:0!important}.ayah-actions:after{display:none!important}
