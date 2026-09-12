@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ihfad-mushaf-pages-v3';
+const CACHE_NAME = 'ihfad-mushaf-pages-v4';
 const STORAGE_PREFIX = 'https://firebasestorage.googleapis.com/v0/b/ihfad-2fecd.firebasestorage.app/o/quran-pages%2F';
 const AUDIO_PREFIX = 'https://firebasestorage.googleapis.com/v0/b/ihfad-2fecd.firebasestorage.app/o/audio%2Fhusary-muallim-128%2F';
 const COORDINATE_PREFIX = 'https://firebasestorage.googleapis.com/v0/b/ihfad-2fecd.firebasestorage.app/o/ayah-coordinates%2F';
