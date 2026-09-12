@@ -175,8 +175,11 @@ function align() {
     left = imageRect.left - pageRect.left + (imageRect.width - iw) / 2,
     top = imageRect.top - pageRect.top + (imageRect.height - ih) / 2;
   Object.assign(layer.style, {
+    inset: "auto",
     left: `${left}px`,
     top: `${top}px`,
+    right: "auto",
+    bottom: "auto",
     width: `${iw}px`,
     height: `${ih}px`,
     transform: image.style.transform || "",
@@ -393,15 +396,15 @@ function showActions() {
   let x = Math.max(
       menuWidth / 2 + 8,
       Math.min(
-        page.clientWidth - menuWidth / 2 - 8,
-        (left + right) / 2 - pageRect.left,
+        window.innerWidth - menuWidth / 2 - 8,
+        (left + right) / 2,
       ),
     ),
-    y = top - pageRect.top - menuHeight - gap;
+    y = top - menuHeight - gap;
   if (y < 8)
     y = Math.min(
-      page.clientHeight - menuHeight - 8,
-      bottom - pageRect.top + gap,
+      window.innerHeight - menuHeight - 8,
+      bottom + gap,
     );
   menu.style.left = `${x}px`;
   menu.style.top = `${y}px`;
