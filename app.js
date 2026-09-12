@@ -4,7 +4,7 @@ const $ = (s) => document.querySelector(s),
   page = $("#quranPage"),
   surface = $("#swipeArea"),
   layer = $("#ayahLayer"),
-  nf = new Intl.NumberFormat("ar-EG"),
+  nf = new Intl.NumberFormat("ar-EG"), 
   STORE =
     "https://firebasestorage.googleapis.com/v0/b/ihfad-2fecd.firebasestorage.app/o/";
 const N = [
