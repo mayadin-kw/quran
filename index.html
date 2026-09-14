@@ -20,11 +20,35 @@
       <img class="brand-logo" src="Logo.png" alt="شعار القرآن الكريم" />
       <p class="welcome-text">رفيقك لقراءة كتاب الله وحفظه</p>
       <div class="home-actions">
-        <button class="primary-action" id="readButton"><span class="button-icon">۞</span>قراءة<span class="arrow">←</span></button>
-        <button class="secondary-action" id="openReciterManager" type="button"><span class="button-icon">♬</span>تحديد القراء<span class="arrow">←</span></button>
+        <button class="primary-action" id="readButton"><span class="button-icon">۞</span>قراءة واستماع<span class="arrow">←</span></button>
         <button class="secondary-action" id="memorizeButton"><span class="button-icon">✦</span>تحفيظ<span class="arrow">←</span></button>
       </div>
       <p class="bismillah">بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ</p>
+    </section>
+  </main>
+
+  <main id="memorizationSetup" class="memorization-screen hidden" dir="rtl">
+    <header class="memorization-header"><button id="memorizationSetupBack" class="memorization-back" type="button">← <span>العودة</span></button><div><strong>التحفيظ</strong><small>ابدأ خطة حفظ هادئة ومنظمة</small></div></header>
+    <section class="memorization-setup-card">
+      <p class="memorization-kicker">حفظ جديد</p><h1>اختر ما تريد حفظه</h1>
+      <label>السورة<select id="memorizationSurah" aria-label="اختر السورة"></select></label>
+      <div class="memorization-range"><label>من الآية<select id="memorizationFrom" aria-label="من الآية"></select></label><label>إلى الآية<select id="memorizationTo" aria-label="إلى الآية"></select></label></div>
+      <label>معاينة الآية<select id="memorizationPreviewAyah" aria-label="معاينة الآية"></select></label>
+      <section class="memorization-reciters"><h2>القارئ</h2><p>اختر قارئاً للحفظ، ويمكنك الاستماع للآية المختارة قبل البدء.</p><div id="memorizationReciterCards"></div></section>
+      <p id="memorizationSetupMessage" class="memorization-message" aria-live="polite"></p>
+      <button id="startMemorization" class="memorization-start" type="button" disabled>ابدأ التحفيظ</button>
+    </section>
+  </main>
+
+  <main id="memorizationSession" class="memorization-screen hidden" dir="rtl">
+    <header class="memorization-header"><button id="memorizationExit" class="memorization-back" type="button">← <span>إنهاء</span></button><div><strong id="memorizationSessionTitle">التحفيظ</strong><small id="memorizationSessionRange"></small></div><button id="memorizationPause" class="memorization-pause" type="button">إيقاف مؤقت</button></header>
+    <section class="memorization-session-card">
+      <div class="memorization-progress-head"><span>تقدم الحفظ</span><b id="memorizationProgressLabel">٠٪</b></div><div class="memorization-progress"><i id="memorizationProgressBar"></i></div>
+      <p id="memorizationStage" class="memorization-stage">استمع إلى القارئ</p><p id="memorizationCounter" class="memorization-counter"></p>
+      <article id="memorizationText" class="memorization-text" aria-live="polite"></article>
+      <p id="memorizationFeedback" class="memorization-feedback" aria-live="polite"></p>
+      <div class="memorization-mic-area"><button id="memorizationMic" class="memorization-mic" type="button" disabled aria-label="بدء التسجيل"><span>🎙</span></button><button id="memorizationStop" class="memorization-stop hidden" type="button">إنهاء الترديد</button><p id="memorizationMicHint">استمع إلى القارئ</p></div>
+      <div class="memorization-demo"><span>وضع تجريبي — لا يوجد تحقق صوتي متصل بعد</span><button id="memorizationDemoCorrect" type="button">محاكاة إجابة صحيحة</button><button id="memorizationDemoError" type="button">محاكاة خطأ</button></div>
     </section>
   </main>
 
@@ -55,6 +79,7 @@
         <h2>القائمة</h2>
         <button id="openJump" class="menu-item" type="button"><span>⌁</span> الانتقال إلى صفحة <b>←</b></button>
         <button id="openListening" class="menu-item" type="button"><span>◖</span> استماع <b>←</b></button>
+        <button id="openReciter" class="menu-item" type="button"><span>♬</span> تحديد القارئ <b>←</b></button>
         <p class="menu-note">اختر انتقالاً سريعاً إلى صفحة أو استمع إلى سورة وآيات محددة.</p>
       </section>
       <section id="jumpMenu" class="hidden">
@@ -77,17 +102,14 @@
         <button id="playSelection" class="go-button play-selection" type="button">▶ تشغيل</button>
         <p class="audio-credit">التلاوة: الحصري المعلّم · <a href="https://everyayah.com/" target="_blank" rel="noopener">EveryAyah</a></p>
       </section>
+      <section id="reciterMenu" class="hidden">
+        <button id="backFromReciter" class="menu-back" type="button">→ العودة للقائمة</button>
+        <h2>تحديد القارئ</h2>
+        <label for="reciterSelect">القارئ الحالي</label>
+        <select id="reciterSelect" aria-label="اختر القارئ"></select>
+      </section>
     </div>
   </aside>
-  <section id="reciterManager" class="reciter-manager hidden" role="dialog" aria-modal="true" aria-labelledby="reciterManagerTitle">
-    <div class="reciter-manager-card">
-      <div class="reciter-manager-heading"><div><h2 id="reciterManagerTitle">تحديد القراء</h2><p>اختر الأصوات التي تريد إظهارها، ثم حدد القارئ الحالي.</p></div><button id="closeReciterManager" type="button" aria-label="إغلاق">×</button></div>
-      <label class="current-reciter-label" for="currentReciter">القارئ الحالي</label>
-      <select id="currentReciter" aria-label="القارئ الحالي"></select>
-      <div id="reciterOptions" class="reciter-options" aria-label="قائمة القراء"></div>
-      <button id="saveReciters" class="save-reciters" type="button">تم</button>
-    </div>
-  </section>
   <div class="loading-overlay" id="loadingOverlay" aria-live="polite" aria-busy="true">
     <div class="loading-card">
       <div class="loading-emblem"><span>۞</span></div>
@@ -107,10 +129,11 @@
     <div class="audio-progress"><i id="audioProgress"></i></div>
   </div>
   <audio id="quranAudio" preload="none"></audio>
-  <audio id="reciterPreview" preload="none"></audio>
+  <audio id="memorizationAudio" preload="none"></audio>
   <link rel="stylesheet" href="reader-layout-fix.css?v=20260912-layout-3" />
-  <link rel="stylesheet" href="reciter-manager.css?v=20260914-1" />
+  <link rel="stylesheet" href="memorization.css?v=20260914-2" />
   <script src="page-map.js?v=20260911-ayah-map-3"></script>
-  <script src="app.js?v=20260914-reciters-1"></script>
+  <script src="app.js?v=20260914-memorization-data-1"></script>
+  <script src="memorization.js?v=20260914-3"></script>
 </body>
 </html>

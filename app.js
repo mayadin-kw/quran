@@ -132,7 +132,7 @@ let p = 1,
   quranText = "";
 const debug =
   new URLSearchParams(location.search).get("debugCoordinates") === "true";
-fetch("quran.txt")
+const quranTextReady = fetch("quran.txt")
   .then((r) => (r.ok ? r.text() : ""))
   .then((t) => (quranText = t))
   .catch(() => {});
@@ -561,6 +561,7 @@ function menu(which) {
   $("#mainMenu").classList.toggle("hidden", which !== "main");
   $("#jumpMenu").classList.toggle("hidden", which !== "jump");
   $("#listeningMenu").classList.toggle("hidden", which !== "listen");
+  $("#reciterMenu").classList.toggle("hidden", which !== "reciter");
 }
 function populate(s) {
   let f = $("#fromAyah"),
@@ -578,6 +579,8 @@ $("#openJump").onclick = () => menu("jump");
 $("#backFromJump").onclick = () => menu("main");
 $("#openListening").onclick = () => menu("listen");
 $("#backToMenu").onclick = () => menu("main");
+$("#openReciter").onclick = () => { renderReciterSelector(); menu("reciter"); };
+$("#backFromReciter").onclick = () => menu("main");
 let mode = "full";
 document.querySelectorAll("[data-mode]").forEach(
   (b) =>
@@ -660,44 +663,32 @@ function setCurrentReciter(id) {
   $("#audioTitle").textContent = reciterName(id);
   persistReciters();
 }
-function renderReciterManager() {
-  const current = $("#currentReciter"), list = $("#reciterOptions");
-  current.replaceChildren(...enabledReciters.map((id) => new Option(reciterName(id), id)));
-  current.value = reciter;
-  list.replaceChildren(...R.map(([id, name]) => {
-    const row = document.createElement("label"), check = document.createElement("input"), title = document.createElement("span"), preview = document.createElement("button");
-    row.className = "reciter-option";
-    check.type = "checkbox"; check.checked = enabledReciters.includes(id); check.dataset.reciter = id;
-    title.textContent = name;
-    preview.type = "button"; preview.className = "reciter-preview"; preview.dataset.preview = id; preview.textContent = "▶ تشغيل آية";
-    row.append(check, title, preview);
-    return row;
-  }));
+function renderReciterSelector() {
+  const select = $("#reciterSelect");
+  select.replaceChildren(...enabledReciters.map((id) => new Option(reciterName(id), id)));
+  select.value = reciter;
 }
-function openReciterManager() { renderReciterManager(); $("#reciterManager").classList.remove("hidden"); }
-function closeReciterManager() { $("#reciterPreview").pause(); $("#reciterManager").classList.add("hidden"); }
-$("#openReciterManager").onclick = openReciterManager;
-$("#closeReciterManager").onclick = closeReciterManager;
-$("#saveReciters").onclick = () => { persistReciters(); closeReciterManager(); msg("تم حفظ اختيار القراء."); };
-$("#currentReciter").onchange = (event) => setCurrentReciter(event.target.value);
-$("#reciterOptions").onchange = (event) => {
-  const id = event.target.dataset.reciter;
-  if (!id) return;
-  if (event.target.checked) enabledReciters.push(id);
-  else if (enabledReciters.length === 1) { event.target.checked = true; return msg("يجب اختيار قارئ واحد على الأقل."); }
-  else enabledReciters = enabledReciters.filter((item) => item !== id);
-  if (!enabledReciters.includes(reciter)) reciter = enabledReciters[0];
-  persistReciters(); renderReciterManager();
-};
-$("#reciterOptions").onclick = (event) => {
-  const id = event.target.closest("[data-preview]")?.dataset.preview;
-  if (!id) return;
-  event.preventDefault();
-  const preview = $("#reciterPreview");
-  preview.src = `https://everyayah.com/data/${id}/001001.mp3`;
-  preview.play().catch(() => msg("تعذر تشغيل معاينة هذا القارئ حالياً."));
+$("#reciterSelect").onchange = (event) => {
+  setCurrentReciter(event.target.value);
+  msg(`تم اختيار ${reciterName(reciter)}.`);
 };
 $("#audioTitle").textContent = reciterName(reciter);
+function getVerseText(verseKey) {
+  const verse = PAGE_MAP.flatMap((entry) => entry.verses).find((entry) => entry[0] === verseKey);
+  return verse && quranText ? quranText.slice(verse[1], verse[2]).trim().replace(/\s*\(\d+\)\s*$/, "") : "";
+}
+window.QuranAppData = {
+  surahNames: N,
+  ayahCounts: C,
+  reciters: R,
+  getEnabledReciters: () => enabledReciters.map((id) => [id, reciterName(id)]),
+  getVerseText,
+  textReady: quranTextReady,
+  audioUrlFor: (reciterId, verseKey) => {
+    const [surah, ayah] = verseKey.split(":");
+    return `https://everyayah.com/data/${reciterId}/${surah.padStart(3, "0")}${ayah.padStart(3, "0")}.mp3`;
+  },
+};
 function dragStart(x, y) {
   gesture = { x, y, mouse: true };
 }
