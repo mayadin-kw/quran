@@ -195,6 +195,13 @@ function align() {
       overlay: { left, top, width: iw, height: ih },
     });
 }
+const nextFrame = () => new Promise((done) => requestAnimationFrame(done));
+async function settleImageLayout() {
+  await nextFrame();
+  await nextFrame();
+  align();
+  if (selected) showActions();
+}
 async function data() {
   if (cal) return cal;
   let r = await fetch("ayah-coordinate-calibration.json?v=20260912-semantic-1");
@@ -318,8 +325,9 @@ async function render() {
   info();
   clear();
   await new Promise((done) => {
-    image.onload = () => {
-      align();
+    image.onload = async () => {
+      await image.decode().catch(() => {});
+      await settleImageLayout();
       done();
     };
     image.onerror = done;
@@ -410,6 +418,9 @@ function showActions() {
   menu.style.top = `${y}px`;
 }
 function selectAyah(k) {
+  // The click may occur during a mobile browser toolbar/layout transition.
+  // Align to the image's current bitmap rectangle before painting this ayah.
+  align();
   selected = k;
   activePaint();
   showActions();
@@ -442,7 +453,8 @@ for (let i = 1; i <= 604; i++)
 $("#readButton").onclick = () => {
   $("#home").classList.add("hidden");
   $("#reader").classList.remove("hidden");
-  render();
+  updateReadingViewport();
+  settleImageLayout().then(render);
 };
 $("#backButton").onclick = () => {
   $("#reader").classList.add("hidden");
@@ -529,9 +541,12 @@ function updateReadingViewport() {
 }
 const layoutObserver = new ResizeObserver(() => updateReadingViewport());
 layoutObserver.observe(page);
+layoutObserver.observe(image);
 layoutObserver.observe($("#audioPlayer"));
 window.addEventListener("resize", updateReadingViewport);
 window.addEventListener("orientationchange", updateReadingViewport);
+window.visualViewport?.addEventListener("resize", updateReadingViewport);
+window.visualViewport?.addEventListener("scroll", updateReadingViewport);
 if ("serviceWorker" in navigator)
   navigator.serviceWorker.register("sw.js").catch(() => {});
 const C = [
@@ -586,17 +601,103 @@ $("#playSelection").onclick = () => {
   play(queue[0]);
 };
 const R = [
-  ["Husary_Muallim_128kbps", "الحصري المعلّم — 128kbps"],
-  ["Alafasy_128kbps", "مشاري العفاسي — 128kbps"],
-  ["Abdurrahmaan_As-Sudais_192kbps", "عبد الرحمن السديس — 192kbps"],
-  ["MaherAlMuaiqly128kbps", "ماهر المعيقلي — 128kbps"],
+  ["Husary_Muallim_128kbps", "الحصري المعلّم"],
+  ["Alafasy_128kbps", "مشاري العفاسي"],
+  ["Abdurrahmaan_As-Sudais_192kbps", "عبد الرحمن السديس"],
+  ["MaherAlMuaiqly128kbps", "ماهر المعيقلي"],
+  ["Abdullah_Basfar_192kbps", "عبد الله بصفر"],
+  ["Abu_Bakr_Ash-Shaatree_128kbps", "أبو بكر الشاطري"],
+  ["Ahmed_ibn_Ali_al-Ajamy_128kbps", "أحمد العجمي"],
+  ["Akram_AlAlaqimy_128kbps", "أكرم العلاقمي"],
+  ["Ali_Hajjaj_AlSuesy_128kbps", "علي الحجاج السويسي"],
+  ["Ayman_Sowaid_64kbps", "أيمن سويد"],
+  ["Fares_Abbad_64kbps", "فارس عباد"],
+  ["Ghamadi_40kbps", "سعد الغامدي"],
+  ["Hani_Rifai_192kbps", "هاني الرفاعي"],
+  ["Husary_128kbps", "محمود خليل الحصري"],
+  ["Hudhaify_128kbps", "علي الحذيفي"],
+  ["Ibrahim_Akhdar_32kbps", "إبراهيم الأخضر"],
+  ["Khaalid_Abdullaah_al-Qahtaanee_192kbps", "خالد القحطاني"],
+  ["Menshawi_16kbps", "محمد صديق المنشاوي"],
+  ["Minshawy_Mujawwad_192kbps", "المنشاوي المجود"],
+  ["Mohammad_al_Tablaway_128kbps", "محمد الطبلاوي"],
+  ["Muhammad_Ayyoub_128kbps", "محمد أيوب"],
+  ["Muhammad_Jibreel_128kbps", "محمد جبريل"],
+  ["Muhammad_al_Muhaisny_64kbps", "محمد المحيسني"],
+  ["Mustafa_Ismail_48kbps", "مصطفى إسماعيل"],
+  ["Nabil_Rifai_48kbps", "نبيل الرفاعي"],
+  ["Nasser_Alqatami_128kbps", "ناصر القطامي"],
+  ["Parhizgar_48kbps", "شهريار پرهيزكار"],
+  ["Salaah_AbdulRahman_Bukhatir_128kbps", "صلاح بو خاطر"],
+  ["Saood_ash-Shuraym_128kbps", "سعود الشريم"],
+  ["Yaser_Salamah_128kbps", "ياسر سلامة"],
+  ["Yasser_Ad-Dussary_128kbps", "ياسر الدوسري"],
 ];
-let reciter = R[0][0];
-$("#reciterSelect").replaceChildren(...R.map((x) => new Option(x[1], x[0])));
-$("#reciterSelect").onchange = (e) => {
-  reciter = e.target.value;
-  $("#audioTitle").textContent = e.target.selectedOptions[0].textContent;
+const RECITER_LIST_KEY = "quran.enabledReciters.v1";
+const RECITER_CURRENT_KEY = "quran.currentReciter.v1";
+const reciterName = (id) => R.find((entry) => entry[0] === id)?.[1] || "القارئ";
+const savedList = (() => {
+  try {
+    const value = JSON.parse(localStorage.getItem(RECITER_LIST_KEY) || "[]");
+    return Array.isArray(value) ? value : [];
+  } catch { return []; }
+})();
+let enabledReciters = savedList.filter((id) => R.some((entry) => entry[0] === id));
+if (!enabledReciters.length) enabledReciters = R.slice(0, 4).map((entry) => entry[0]);
+let reciter = (() => {
+  try { return localStorage.getItem(RECITER_CURRENT_KEY); } catch { return null; }
+})() || enabledReciters[0];
+if (!enabledReciters.includes(reciter)) reciter = enabledReciters[0];
+function persistReciters() {
+  try {
+    localStorage.setItem(RECITER_LIST_KEY, JSON.stringify(enabledReciters));
+    localStorage.setItem(RECITER_CURRENT_KEY, reciter);
+  } catch {}
+}
+function setCurrentReciter(id) {
+  if (!enabledReciters.includes(id)) return;
+  reciter = id;
+  $("#audioTitle").textContent = reciterName(id);
+  persistReciters();
+}
+function renderReciterManager() {
+  const current = $("#currentReciter"), list = $("#reciterOptions");
+  current.replaceChildren(...enabledReciters.map((id) => new Option(reciterName(id), id)));
+  current.value = reciter;
+  list.replaceChildren(...R.map(([id, name]) => {
+    const row = document.createElement("label"), check = document.createElement("input"), title = document.createElement("span"), preview = document.createElement("button");
+    row.className = "reciter-option";
+    check.type = "checkbox"; check.checked = enabledReciters.includes(id); check.dataset.reciter = id;
+    title.textContent = name;
+    preview.type = "button"; preview.className = "reciter-preview"; preview.dataset.preview = id; preview.textContent = "▶ تشغيل آية";
+    row.append(check, title, preview);
+    return row;
+  }));
+}
+function openReciterManager() { renderReciterManager(); $("#reciterManager").classList.remove("hidden"); }
+function closeReciterManager() { $("#reciterPreview").pause(); $("#reciterManager").classList.add("hidden"); }
+$("#openReciterManager").onclick = openReciterManager;
+$("#closeReciterManager").onclick = closeReciterManager;
+$("#saveReciters").onclick = () => { persistReciters(); closeReciterManager(); msg("تم حفظ اختيار القراء."); };
+$("#currentReciter").onchange = (event) => setCurrentReciter(event.target.value);
+$("#reciterOptions").onchange = (event) => {
+  const id = event.target.dataset.reciter;
+  if (!id) return;
+  if (event.target.checked) enabledReciters.push(id);
+  else if (enabledReciters.length === 1) { event.target.checked = true; return msg("يجب اختيار قارئ واحد على الأقل."); }
+  else enabledReciters = enabledReciters.filter((item) => item !== id);
+  if (!enabledReciters.includes(reciter)) reciter = enabledReciters[0];
+  persistReciters(); renderReciterManager();
 };
+$("#reciterOptions").onclick = (event) => {
+  const id = event.target.closest("[data-preview]")?.dataset.preview;
+  if (!id) return;
+  event.preventDefault();
+  const preview = $("#reciterPreview");
+  preview.src = `https://everyayah.com/data/${id}/001001.mp3`;
+  preview.play().catch(() => msg("تعذر تشغيل معاينة هذا القارئ حالياً."));
+};
+$("#audioTitle").textContent = reciterName(reciter);
 function dragStart(x, y) {
   gesture = { x, y, mouse: true };
 }

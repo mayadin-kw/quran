@@ -21,6 +21,7 @@
       <p class="welcome-text">رفيقك لقراءة كتاب الله وحفظه</p>
       <div class="home-actions">
         <button class="primary-action" id="readButton"><span class="button-icon">۞</span>قراءة<span class="arrow">←</span></button>
+        <button class="secondary-action" id="openReciterManager" type="button"><span class="button-icon">♬</span>تحديد القراء<span class="arrow">←</span></button>
         <button class="secondary-action" id="memorizeButton"><span class="button-icon">✦</span>تحفيظ<span class="arrow">←</span></button>
       </div>
       <p class="bismillah">بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ</p>
@@ -77,8 +78,16 @@
         <p class="audio-credit">التلاوة: الحصري المعلّم · <a href="https://everyayah.com/" target="_blank" rel="noopener">EveryAyah</a></p>
       </section>
     </div>
-    <div class="reciter-picker"><label for="reciterSelect">صوت القارئ</label><select id="reciterSelect" aria-label="اختر صوت القارئ"></select></div>
   </aside>
+  <section id="reciterManager" class="reciter-manager hidden" role="dialog" aria-modal="true" aria-labelledby="reciterManagerTitle">
+    <div class="reciter-manager-card">
+      <div class="reciter-manager-heading"><div><h2 id="reciterManagerTitle">تحديد القراء</h2><p>اختر الأصوات التي تريد إظهارها، ثم حدد القارئ الحالي.</p></div><button id="closeReciterManager" type="button" aria-label="إغلاق">×</button></div>
+      <label class="current-reciter-label" for="currentReciter">القارئ الحالي</label>
+      <select id="currentReciter" aria-label="القارئ الحالي"></select>
+      <div id="reciterOptions" class="reciter-options" aria-label="قائمة القراء"></div>
+      <button id="saveReciters" class="save-reciters" type="button">تم</button>
+    </div>
+  </section>
   <div class="loading-overlay" id="loadingOverlay" aria-live="polite" aria-busy="true">
     <div class="loading-card">
       <div class="loading-emblem"><span>۞</span></div>
@@ -98,8 +107,10 @@
     <div class="audio-progress"><i id="audioProgress"></i></div>
   </div>
   <audio id="quranAudio" preload="none"></audio>
+  <audio id="reciterPreview" preload="none"></audio>
   <link rel="stylesheet" href="reader-layout-fix.css?v=20260912-layout-3" />
+  <link rel="stylesheet" href="reciter-manager.css?v=20260914-1" />
   <script src="page-map.js?v=20260911-ayah-map-3"></script>
-  <script src="app.js?v=20260912-actions-6"></script>
+  <script src="app.js?v=20260914-reciters-1"></script>
 </body>
 </html>
