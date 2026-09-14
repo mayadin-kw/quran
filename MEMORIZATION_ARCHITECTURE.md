@@ -14,6 +14,6 @@
 
 ## التحقق الصوتي
 
-واجهة `QuranRecitationRecognizer` موجودة في الواجهة. GitHub Pages ثابت ولا يشغّل Whisper/PyTorch، لذلك لا يوجد ادعاء بأن التحقق الحقيقي متصل. تسجل الواجهة بـ `MediaRecorder` عند ضغط المتعلم للميكروفون، ثم يمر التسجيل إلى الـ adapter. لربط خدمة ذاتية الاستضافة، يستبدل `check()` بطلب `POST /api/recitation/check` يحوي التسجيل و`expectedText` والسياق.
+واجهة `QuranRecitationRecognizer` في `quran-asr-adapter.js`. GitHub Pages ثابت ولا يشغّل Whisper/PyTorch، لذلك يسجل المتصفح فعلياً بـ `MediaRecorder` ثم يرسل التسجيل إلى `POST /api/recitation/check` مع `expectedText` والكلمات المتوقعة والسياق. لا يدّعي الموقع أن التحقق الذكي متصل ما لم يُنشر هذا الخادم. تفاصيل عقد الاستجابة ومسار النشر في `ASR_DEPLOYMENT.md`.
 
 المرشح المقترح للخدمة الذاتية هو `Habib-HF/tarbiyah-ai-v1-1`: بطاقة النموذج تصفه كنموذج Whisper Small لقراءة القرآن، مرخص MIT، وحجمه المعلن نحو 967MB؛ ما زال يتطلب اختباراً محلياً فعلياً على أصوات متعلمين قبل اعتماده. البديل `wasimlhr/whisper-quran-v1` أكبر (Whisper Large-v3) وترخيصه CC-BY-NC-4.0، لذا لا يصلح افتراضه في مشروع تجاري. لا يوجد نموذج مضمّن في المتصفح.

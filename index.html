@@ -56,16 +56,23 @@
     <header class="memorization-header"><button id="memorizationExit" class="memorization-back" type="button">← <span>إنهاء</span></button><div><strong id="memorizationSessionTitle">التحفيظ</strong><small id="memorizationSessionRange"></small></div><button id="memorizationPause" class="memorization-pause" type="button">إيقاف مؤقت</button></header>
     <section class="memorization-session-card">
       <div class="memorization-progress-head"><span>تقدم الحفظ</span><b id="memorizationProgressLabel">٠٪</b></div><div class="memorization-progress"><i id="memorizationProgressBar"></i></div>
-      <p id="memorizationStage" class="memorization-stage">استمع إلى القارئ</p><p id="memorizationCounter" class="memorization-counter"></p>
+      <p id="memorizationStage" class="memorization-stage">استمع إلى القارئ</p>
+      <section id="memorizationRepetition" class="memorization-repetition" aria-live="polite">
+        <div><strong id="memorizationCounter">مرحلة الترديد</strong><small id="memorizationRemaining"></small></div>
+        <div id="memorizationSteps" class="memorization-steps" aria-label="تقدم التكرار"></div>
+      </section>
       <section class="memorization-mushaf-wrap" aria-label="مصحف التحفيظ بالكلمات">
         <p id="memorizationMushafStatus" class="memorization-mushaf-status" aria-live="polite">جارٍ تجهيز صفحة المصحف…</p>
         <div id="memorizationMushaf" class="memorization-mushaf"></div>
       </section>
       <p id="memorizationFeedback" class="memorization-feedback" aria-live="polite"></p>
       <div class="memorization-mic-area"><button id="memorizationMic" class="memorization-mic" type="button" disabled aria-label="بدء التسجيل"><span>🎙</span></button><button id="memorizationStop" class="memorization-stop hidden" type="button">إنهاء الترديد</button><p id="memorizationMicHint">استمع إلى القارئ</p></div>
-      <div class="memorization-demo"><span>وضع تجريبي — لا يوجد تحقق صوتي متصل بعد</span><button id="memorizationDemoCorrect" type="button">محاكاة إجابة صحيحة</button><button id="memorizationDemoError" type="button">محاكاة خطأ</button></div>
+      <div id="memorizationDemo" class="memorization-demo"><span>وضع تشخيصي</span><button id="memorizationDemoCorrect" type="button">محاكاة إجابة صحيحة</button><button id="memorizationDemoError" type="button">محاكاة خطأ</button></div>
     </section>
   </main>
+  <div id="memorizationExitDialog" class="memorization-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="memorizationExitTitle">
+    <div><h2 id="memorizationExitTitle">هل تريد إنهاء جلسة التحفيظ؟</h2><p>سيتم حفظ تقدمك فقط إذا اخترت متابعة الحفظ.</p><section><button id="memorizationExitCancel" type="button">متابعة الحفظ</button><button id="memorizationExitConfirm" type="button">إنهاء الجلسة</button></section></div>
+  </div>
 
   <main id="reader" class="reader-screen hidden" aria-live="polite">
     <header class="reader-header">
@@ -146,11 +153,12 @@
   <audio id="quranAudio" preload="none"></audio>
   <audio id="memorizationAudio" preload="none"></audio>
   <link rel="stylesheet" href="reader-layout-fix.css?v=20260912-layout-3" />
-  <link rel="stylesheet" href="memorization.css?v=20260914-svg-session-1" />
+  <link rel="stylesheet" href="memorization.css?v=20260914-session-ui-2" />
   <link rel="stylesheet" href="memorization-prototype.css?v=20260914-svg-session-1" />
   <script src="page-map.js?v=20260911-ayah-map-3"></script>
   <script src="app.js?v=20260914-memorization-data-2"></script>
   <script src="memorization-word-prototype.js?v=20260914-svg-session-1"></script>
-  <script src="memorization.js?v=20260914-svg-session-2"></script>
+  <script src="quran-asr-adapter.js?v=20260914-1"></script>
+  <script src="memorization.js?v=20260914-session-ui-2"></script>
 </body>
 </html>
