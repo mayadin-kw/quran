@@ -1,0 +1,14 @@
+.memorization-prototype-open{width:100%;margin-top:10px;border:1px solid #d8c79d;border-radius:12px;padding:11px;background:#fff;color:#315b4e;font:700 13px Cairo,Arial,sans-serif;cursor:pointer}
+.memorization-prototype-card{width:min(860px,100%);margin:12px auto;padding:18px;border-radius:20px;background:#fffdf6;color:#17352e;box-shadow:0 20px 60px #03161255}
+.memorization-prototype-status{margin:0 0 12px;color:#315b4e;font-size:12px;font-weight:700}
+.memorization-prototype-page{width:min(100%,720px);margin:auto;border-radius:10px;background:#fff;overflow:hidden}
+.memorization-prototype-page svg{display:block;width:100%;height:auto}
+.memorization-prototype-page .mem-word-hidden{opacity:0}
+.memorization-prototype-page .mem-word-visible{opacity:1}
+.memorization-prototype-page .mem-word-wrong path{fill:#bd382d!important}
+.memorization-prototype-controls{display:flex;flex-wrap:wrap;justify-content:center;gap:7px;margin-top:14px}
+.memorization-prototype-controls button{border:1px solid #d8c79d;border-radius:9px;padding:8px 10px;background:#fff;color:#315b4e;font:700 11px Cairo,Arial,sans-serif;cursor:pointer}
+.memorization-prototype-note{margin:12px 0 0;color:#697e76;font-size:11px;text-align:center}
+.mem-word-debug-bound{fill:none;stroke:#d73427;stroke-width:.55;pointer-events:none}
+.mem-word-debug-label{fill:#c7271c;font:5px sans-serif;pointer-events:none}
+@media(max-width:600px){.memorization-prototype-card{padding:12px}.memorization-prototype-controls button{padding:8px;font-size:10px}}

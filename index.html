@@ -37,6 +37,18 @@
       <section class="memorization-reciters"><h2>القارئ</h2><p>اختر قارئاً للحفظ، ويمكنك الاستماع للآية المختارة قبل البدء.</p><div id="memorizationReciterCards"></div></section>
       <p id="memorizationSetupMessage" class="memorization-message" aria-live="polite"></p>
       <button id="startMemorization" class="memorization-start" type="button" disabled>ابدأ التحفيظ</button>
+      <button id="openMemorizationWordPrototype" class="memorization-prototype-open" type="button">معاينة صفحة الكلمات SVG</button>
+    </section>
+  </main>
+  <main id="memorizationWordPrototype" class="memorization-screen hidden" dir="rtl">
+    <header class="memorization-header"><button id="memorizationPrototypeBack" class="memorization-back" type="button">← <span>العودة</span></button><div><strong>نموذج كلمات المصحف</strong><small>آل عمران — صفحة SVG مستقلة</small></div></header>
+    <section class="memorization-prototype-card">
+      <p id="memorizationPrototypeStatus" class="memorization-prototype-status" aria-live="polite">جارٍ تحميل صفحة المصحف…</p>
+      <div id="memorizationPrototypePage" class="memorization-prototype-page" aria-label="صفحة مصحف SVG قابلة للتحكم بالكلمات"></div>
+      <div class="memorization-prototype-controls" aria-label="أدوات اختبار الكلمات">
+        <button type="button" data-mem-prototype="reset">إخفاء الكل</button><button type="button" data-mem-prototype="word">إظهار كلمة</button><button type="button" data-mem-prototype="segment">إظهار مقطع</button><button type="button" data-mem-prototype="ayah">إظهار آية</button><button type="button" data-mem-prototype="wrong">كلمة خاطئة</button>
+      </div>
+      <p class="memorization-prototype-note">المعرف التجريبي: <b>3:23:wordIndex</b> — تبقى علامات أرقام الآيات ظاهرة.</p>
     </section>
   </main>
 
@@ -131,9 +143,11 @@
   <audio id="quranAudio" preload="none"></audio>
   <audio id="memorizationAudio" preload="none"></audio>
   <link rel="stylesheet" href="reader-layout-fix.css?v=20260912-layout-3" />
-  <link rel="stylesheet" href="memorization.css?v=20260914-2" />
+  <link rel="stylesheet" href="memorization.css?v=20260914-4" />
+  <link rel="stylesheet" href="memorization-prototype.css?v=20260914-1" />
   <script src="page-map.js?v=20260911-ayah-map-3"></script>
-  <script src="app.js?v=20260914-memorization-data-1"></script>
-  <script src="memorization.js?v=20260914-3"></script>
+  <script src="app.js?v=20260914-memorization-data-2"></script>
+  <script src="memorization.js?v=20260914-4"></script>
+  <script src="memorization-word-prototype.js?v=20260914-1"></script>
 </body>
 </html>
