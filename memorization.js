@@ -14,6 +14,13 @@
   const normalize = (text) => text.normalize("NFD").replace(/[\u064B-\u065F\u0670\u06D6-\u06EDـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/[^\u0621-\u064Aa-zA-Z\s]/g, " ").replace(/\s+/g, " ").trim();
   const verseKey = (ayah) => `${settings.surah}:${ayah}`;
   const wordRange = (from, to) => Array.from({ length: Math.max(0, to - from + 1) }, (_, index) => from + index);
+  // Supports both the current app data interface and the already-published
+  // builds that expose PAGE_MAP but not QuranAppData.pageForVerse.
+  function pageForVerse(key) {
+    if (typeof app.pageForVerse === "function") return app.pageForVerse(key);
+    if (typeof PAGE_MAP !== "undefined") return PAGE_MAP.find((entry) => entry.verses?.some(([verse]) => verse === key))?.page || null;
+    return null;
+  }
 
   function splitSegments(text, ayah) {
     const words = text.split(/\s+/).filter(Boolean), segments = [];
@@ -31,7 +38,7 @@
     return Array.from({ length: settings.to - settings.from + 1 }, (_, index) => {
       const ayah = settings.from + index, key = verseKey(ayah), text = app.getVerseText(key);
       if (!text) throw new Error(`Missing canonical text for ${key}`);
-      const page = app.pageForVerse(key);
+      const page = pageForVerse(key);
       if (!page) throw new Error(`Missing Mushaf page for ${key}`);
       return { ayah, verseKey: key, page, text, segments: splitSegments(text, ayah) };
     });
