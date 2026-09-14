@@ -25,7 +25,7 @@
   function debugWords() {
     const svg = $("#memorizationPrototypePage svg");
     if (!svg) return;
-    svg.querySelector("#memorizationWordDebug").remove();
+    svg.querySelector("#memorizationWordDebug")?.remove();
     if (!debug) return;
     const layer = document.createElementNS("http://www.w3.org/2000/svg", "g");
     layer.id = "memorizationWordDebug";
