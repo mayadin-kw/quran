@@ -30,25 +30,16 @@
   <main id="memorizationSetup" class="memorization-screen hidden" dir="rtl">
     <header class="memorization-header"><button id="memorizationSetupBack" class="memorization-back" type="button">← <span>العودة</span></button><div><strong>التحفيظ</strong><small>ابدأ خطة حفظ هادئة ومنظمة</small></div></header>
     <section class="memorization-setup-card">
-      <p class="memorization-kicker">حفظ جديد</p><h1>اختر ما تريد حفظه</h1>
-      <label>السورة<select id="memorizationSurah" aria-label="اختر السورة"></select></label>
-      <div class="memorization-range"><label>من الآية<select id="memorizationFrom" aria-label="من الآية"></select></label><label>إلى الآية<select id="memorizationTo" aria-label="إلى الآية"></select></label></div>
-      <label>معاينة الآية<select id="memorizationPreviewAyah" aria-label="معاينة الآية"></select></label>
-      <section class="memorization-reciters"><h2>القارئ</h2><p>اختر قارئاً للحفظ، ويمكنك الاستماع للآية المختارة قبل البدء.</p><div id="memorizationReciterCards"></div></section>
+      <p class="memorization-kicker">جلسة جديدة</p><h1>ماذا ستحفظ اليوم؟</h1>
+      <div class="memorization-setup-fields">
+        <label class="memorization-field memorization-field-wide">السورة<select id="memorizationSurah" aria-label="اختر السورة"></select></label>
+        <div class="memorization-range"><label class="memorization-field">من الآية<select id="memorizationFrom" aria-label="من الآية"></select></label><label class="memorization-field">إلى الآية<select id="memorizationTo" aria-label="إلى الآية"></select></label></div>
+        <label class="memorization-field memorization-field-wide">آية المعاينة<select id="memorizationPreviewAyah" aria-label="معاينة الآية"></select></label>
+      </div>
+      <section class="memorization-reciters"><div><h2>القارئ</h2><p>اختر قارئك ثم استمع إلى آية المعاينة.</p></div><div class="memorization-reciter-row"><select id="memorizationReciter" aria-label="اختر القارئ"></select><button id="memorizationPreviewAudio" type="button">▶ استماع</button></div></section>
+      <section class="memorization-permission" aria-labelledby="memorizationPermissionTitle"><div><h2 id="memorizationPermissionTitle">تجهيز الجلسة</h2><p id="memorizationPermissionHint">فعّل الميكروفون مرة واحدة قبل البدء.</p></div><button id="memorizationPermission" type="button">🎙 تفعيل الميكروفون</button></section>
       <p id="memorizationSetupMessage" class="memorization-message" aria-live="polite"></p>
       <button id="startMemorization" class="memorization-start" type="button" disabled>ابدأ التحفيظ</button>
-      <button id="openMemorizationWordPrototype" class="memorization-prototype-open" type="button">معاينة صفحة الكلمات SVG</button>
-    </section>
-  </main>
-  <main id="memorizationWordPrototype" class="memorization-screen hidden" dir="rtl">
-    <header class="memorization-header"><button id="memorizationPrototypeBack" class="memorization-back" type="button">← <span>العودة</span></button><div><strong>نموذج كلمات المصحف</strong><small>آل عمران — صفحة SVG مستقلة</small></div></header>
-    <section class="memorization-prototype-card">
-      <p id="memorizationPrototypeStatus" class="memorization-prototype-status" aria-live="polite">جارٍ تحميل صفحة المصحف…</p>
-      <div id="memorizationPrototypePage" class="memorization-prototype-page" aria-label="صفحة مصحف SVG قابلة للتحكم بالكلمات"></div>
-      <div class="memorization-prototype-controls" aria-label="أدوات اختبار الكلمات">
-        <button type="button" data-mem-prototype="reset">إخفاء الكل</button><button type="button" data-mem-prototype="word">إظهار كلمة</button><button type="button" data-mem-prototype="segment">إظهار مقطع</button><button type="button" data-mem-prototype="ayah">إظهار آية</button><button type="button" data-mem-prototype="wrong">كلمة خاطئة</button>
-      </div>
-      <p class="memorization-prototype-note">المعرف التجريبي: <b>3:23:wordIndex</b> — تبقى علامات أرقام الآيات ظاهرة.</p>
     </section>
   </main>
 
@@ -66,7 +57,7 @@
         <div id="memorizationMushaf" class="memorization-mushaf"></div>
       </section>
       <p id="memorizationFeedback" class="memorization-feedback" aria-live="polite"></p>
-      <div class="memorization-mic-area"><button id="memorizationMic" class="memorization-mic" type="button" disabled aria-label="بدء التسجيل"><span>🎙</span></button><button id="memorizationStop" class="memorization-stop hidden" type="button">إنهاء الترديد</button><p id="memorizationMicHint">استمع إلى القارئ</p></div>
+      <div class="memorization-mic-area" role="status" aria-live="polite"><div id="memorizationMic" class="memorization-mic" aria-hidden="true"><span>🎙</span></div><p id="memorizationMicHint">استمع إلى القارئ</p></div>
       <div id="memorizationDemo" class="memorization-demo"><span>وضع تشخيصي</span><button id="memorizationDemoCorrect" type="button">محاكاة إجابة صحيحة</button><button id="memorizationDemoError" type="button">محاكاة خطأ</button></div>
     </section>
   </main>
@@ -155,13 +146,12 @@
   <link rel="stylesheet" href="reader-layout-fix.css?v=20260912-layout-3" />
   <link rel="stylesheet" href="memorization.css?v=20260914-session-ui-2" />
   <link rel="stylesheet" href="memorization-ui-fix.css?v=20260914-1" />
-  <link rel="stylesheet" href="memorization-prototype.css?v=20260914-svg-session-1" />
   <script src="page-map.js?v=20260911-ayah-map-3"></script>
   <script src="app.js?v=20260914-memorization-data-2"></script>
   <script src="app-config.js?v=20260915-asr-url-1"></script>
   <script type="module" src="firebase-auth.js?v=20260915-anonymous-auth-1"></script>
-  <script src="memorization-word-prototype.js?v=20260914-svg-crop-2"></script>
+  <script src="memorization-word-prototype.js?v=20260915-session-ux-1"></script>
   <script src="quran-asr-adapter.js?v=20260915-cloud-run-1"></script>
-  <script src="memorization.js?v=20260914-mic-status-3"></script>
+  <script src="memorization.js?v=20260915-session-ux-1"></script>
 </body>
 </html>

@@ -27,14 +27,18 @@
     cropToMushafContent(renderedSvg, page);
     return renderedSvg;
   }
-  // Source SVGs use a full 382.68 × 547.09 canvas while some opening pages
-  // contain a much smaller md-page-inner group. Crop only the presentation
-  // viewBox; all source coordinates and data-surah/data-aya/data-word-index
-  // identities remain untouched.
+  // Crop only the presentation camera. The source coordinate system, word ids,
+  // and word metadata remain untouched. Page inner can include invisible or
+  // decorative canvas space, so build bounds from rendered Quran content first.
   function cropToMushafContent(svg, page) {
+    const candidates = [...svg.querySelectorAll('g[id^="md-word-"], g[data-type="ayah"], g[id*="surah" i], g[id*="title" i]')];
+    const boxes = candidates.map((node) => { try { return node.getBBox(); } catch { return null; } }).filter((box) => box && box.width > .1 && box.height > .1);
     const content = svg.querySelector("#md-page-inner");
-    if (!content || typeof content.getBBox !== "function") return;
-    const box = content.getBBox();
+    if (!boxes.length && content && typeof content.getBBox === "function") boxes.push(content.getBBox());
+    if (!boxes.length) return;
+    const box = { x: Math.min(...boxes.map((item) => item.x)), y: Math.min(...boxes.map((item) => item.y)), width: 0, height: 0 };
+    const right = Math.max(...boxes.map((item) => item.x + item.width)), bottom = Math.max(...boxes.map((item) => item.y + item.height));
+    box.width = right - box.x; box.height = bottom - box.y;
     if (![box.x, box.y, box.width, box.height].every(Number.isFinite) || box.width < 1 || box.height < 1) return;
     const paddingX = Math.max(8, box.width * .045), paddingY = Math.max(8, box.height * .035);
     const x = Math.max(0, box.x - paddingX), y = Math.max(0, box.y - paddingY);
@@ -48,12 +52,19 @@
   }
   function allWords(host) { return [...host.querySelectorAll('g[id^="md-word-"][data-type="text"]')]; }
   function targetWords(host, targets) { return targets.flatMap((target) => [...host.querySelectorAll(selectorFor(target))]); }
-  // The only word renderer used by both the approved prototype and the real session.
-  function renderWords(host, targets, { revealCount = 0, wrongIndex = null } = {}) {
-    const words = allWords(host); words.forEach((word) => word.classList.remove("mem-word-visible", "mem-word-wrong")); words.forEach((word) => word.classList.add("mem-word-hidden"));
+  function renderWords(host, targets, { revealCount = 0, wrongIndex = null, activeIndex = null } = {}) {
+    const svg = host.querySelector("svg"); svg?.querySelector("#memorizationWrongWordLayer")?.remove();
+    const words = allWords(host); words.forEach((word) => word.classList.remove("mem-word-visible", "mem-word-wrong", "mem-word-active")); words.forEach((word) => word.classList.add("mem-word-hidden"));
     const selected = targetWords(host, targets);
-    selected.slice(0, revealCount).forEach((word, index) => { word.classList.remove("mem-word-hidden"); word.classList.add("mem-word-visible"); if (wrongIndex === index) word.classList.add("mem-word-wrong"); });
-    if (wrongIndex !== null && selected[wrongIndex]) { selected[wrongIndex].classList.remove("mem-word-hidden"); selected[wrongIndex].classList.add("mem-word-visible", "mem-word-wrong"); }
+    selected.slice(0, revealCount).forEach((word) => { word.classList.remove("mem-word-hidden"); word.classList.add("mem-word-visible"); });
+    if (activeIndex !== null && selected[activeIndex]) { selected[activeIndex].classList.remove("mem-word-hidden"); selected[activeIndex].classList.add("mem-word-visible", "mem-word-active"); }
+    if (wrongIndex !== null && selected[wrongIndex] && svg) {
+      // A wrong answer in hidden mode marks the real word geometry without
+      // rendering the answer itself.
+      const box = selected[wrongIndex].getBBox(), layer = document.createElementNS("http://www.w3.org/2000/svg", "g"), rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      selected[wrongIndex].classList.add("mem-word-wrong"); layer.id = "memorizationWrongWordLayer";
+      rect.setAttribute("x", box.x); rect.setAttribute("y", box.y); rect.setAttribute("width", box.width); rect.setAttribute("height", box.height); rect.setAttribute("rx", "1.5"); rect.setAttribute("class", "mem-word-wrong-box"); layer.append(rect); svg.append(layer);
+    }
     debugWords(host, selected); return selected;
   }
   function debugWords(host, selected) {
@@ -66,10 +77,4 @@
     }); svg.append(layer);
   }
   window.MemorizationSvgWords = { loadPage, renderWords, targetWords };
-
-  const prototypeTarget = { surah: 3, ayah: 23 }; let prototypeLoaded = false;
-  async function openPrototype() { const status = $("#memorizationPrototypeStatus"), host = $("#memorizationPrototypePage"); $("#memorizationSetup").classList.add("hidden"); $("#memorizationWordPrototype").classList.remove("hidden"); try { await loadPage(host, 53); prototypeLoaded = true; renderWords(host, [prototypeTarget]); status.textContent = "تم تحميل صفحة SVG: الكلمات مخفية، وعلامات الآيات بقيت ظاهرة."; } catch (error) { status.textContent = `تعذر تحميل نموذج الكلمات: ${error.message}`; } }
-  $("#openMemorizationWordPrototype").onclick = openPrototype;
-  $("#memorizationPrototypeBack").onclick = () => { $("#memorizationWordPrototype").classList.add("hidden"); $("#memorizationSetup").classList.remove("hidden"); };
-  $("#memorizationWordPrototype").onclick = (event) => { const action = event.target.dataset.memPrototype; if (!action || !prototypeLoaded) return; const host = $("#memorizationPrototypePage"), selected = targetWords(host, [prototypeTarget]); if (action === "reset") renderWords(host, [prototypeTarget]); if (action === "word") renderWords(host, [prototypeTarget], { revealCount: 1 }); if (action === "segment") renderWords(host, [prototypeTarget], { revealCount: 3 }); if (action === "ayah") renderWords(host, [prototypeTarget], { revealCount: selected.length }); if (action === "wrong") renderWords(host, [prototypeTarget], { revealCount: 2, wrongIndex: 1 }); };
 })();

@@ -9,10 +9,22 @@
   const debug = new URLSearchParams(location.search).get("debugMemorization") === "true";
   const S = { SETUP:"SETUP", TEACHER_VISIBLE:"TEACHER_PLAYING_VISIBLE", WAIT_VISIBLE:"WAITING_VISIBLE_REPEAT", RECORD_VISIBLE:"RECORDING_VISIBLE", CHECK_VISIBLE:"CHECKING_VISIBLE", TEACHER_HIDDEN:"TEACHER_PLAYING_HIDDEN", WAIT_HIDDEN:"WAITING_HIDDEN_REPEAT", RECORD_HIDDEN:"RECORDING_HIDDEN", CHECK_HIDDEN:"CHECKING_HIDDEN", COMPLETE:"COMPLETE" };
   let settings = { surah: 1, from: 1, to: 7, reciter: "" };
-  let state, recorder, stream, chunks = [], restoreOffered = false, audioContext, analyser, silenceTimer, speechStarted = false;
+  let state, recorder, microphoneStream, chunks = [], restoreOffered = false, audioContext, analyser, silenceTimer, speechStarted = false, microphoneReady = false;
   const nf = new Intl.NumberFormat("ar-EG");
   const normalize = (text) => text.normalize("NFD").replace(/[\u064B-\u065F\u0670\u06D6-\u06EDـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/[^\u0621-\u064Aa-zA-Z\s]/g, " ").replace(/\s+/g, " ").trim();
   const verseKey = (ayah) => `${settings.surah}:${ayah}`;
+  // A timing provider deliberately accepts only real alignment metadata. It
+  // never derives word timing by splitting an ayah duration into equal parts.
+  class ReciterWordTimingProvider {
+    constructor() { this.cache = new Map(); }
+    async get(reciter, key) {
+      const cacheKey = `${reciter}:${key}`; if (this.cache.has(cacheKey)) return this.cache.get(cacheKey);
+      const supplied = window.QURAN_WORD_TIMINGS?.[cacheKey] || window.QURAN_WORD_TIMINGS?.[key];
+      const task = Promise.resolve(Array.isArray(supplied) ? supplied : null).then((timings) => timings?.every((item) => Number.isFinite(item.start) && Number.isFinite(item.end)) ? timings : null);
+      this.cache.set(cacheKey, task); return task;
+    }
+  }
+  const wordTimings = new ReciterWordTimingProvider();
   const wordRange = (from, to) => Array.from({ length: Math.max(0, to - from + 1) }, (_, index) => from + index);
   // Supports both the current app data interface and the already-published
   // builds that expose PAGE_MAP but not QuranAppData.pageForVerse.
@@ -87,7 +99,7 @@
     state.expectedText = targetText(); state.expectedWords = normalize(state.expectedText).split(" ").filter(Boolean);
     state.segmentStartWord = targetKind === "unit" ? current.startWord : 0;
     state.segmentEndWord = targetKind === "unit" ? current.endWord : Math.max(0, state.expectedWords.length - 1);
-    state.revealedWordCount = 0; state.wrongWordIndex = null;
+    state.revealedWordCount = 0; state.wrongWordIndex = null; state.activeWordIndex = null;
     if (targetKind !== "cross-link") { state.currentAudioVerseKey = state.currentVerseKey; audio.src = app.audioUrlFor(settings.reciter, state.currentVerseKey); }
     assertAudio(); log("setCurrentTarget");
   }
@@ -104,7 +116,7 @@
       const selected = wordsView.targetWords(host, targets);
       if (!selected.length) throw new Error(`Missing SVG words for ${state.currentVerseKey}`);
       const visible = hidden() ? state.revealedWordCount : selected.length;
-      wordsView.renderWords(host, targets, { revealCount: visible, wrongIndex: state.wrongWordIndex });
+      wordsView.renderWords(host, targets, { revealCount: visible, wrongIndex: state.wrongWordIndex, activeIndex: state.activeWordIndex });
       status.textContent = `صفحة المصحف ${nf.format(state.currentPage)} — ${state.currentVerseKey}`;
     } catch (error) {
       status.textContent = `تعذر تحميل كلمات المصحف: ${error.message}`;
@@ -117,8 +129,8 @@
     $("#memorizationProgressBar").style.width = `${progress}%`; $("#memorizationProgressLabel").textContent = `${nf.format(progress)}٪`;
     renderRepetition();
     const mic = $("#memorizationMic"), waiting = state.phase === S.WAIT_VISIBLE || state.phase === S.WAIT_HIDDEN;
-    mic.disabled = !waiting; mic.classList.toggle("recording", /^RECORD/.test(state.phase)); $("#memorizationStop").classList.toggle("hidden", !/^RECORD/.test(state.phase));
-    $("#memorizationMicHint").textContent = /^TEACHER/.test(state.phase) ? "استمع إلى القارئ" : /^RECORD/.test(state.phase) ? "جاري الاستماع..." : /^CHECK/.test(state.phase) ? "جاري التحقق..." : waiting ? "اضغط هنا وردد" : "";
+    mic.classList.toggle("recording", /^RECORD/.test(state.phase));
+    $("#memorizationMicHint").textContent = /^TEACHER/.test(state.phase) ? "استمع إلى القارئ" : /^RECORD/.test(state.phase) ? "🎙 استمع إليك الآن" : /^CHECK/.test(state.phase) ? "جاري التحقق..." : waiting ? "جاري الاستعداد..." : state.phase === S.COMPLETE ? "أحسنت" : "";
     renderMushaf(); log("render");
   }
   function save() { try { localStorage.setItem(activeKey, "true"); localStorage.setItem(storeKey, JSON.stringify({ schema: 4, settings, state })); } catch {} }
@@ -129,10 +141,10 @@
     state.wrongWordIndex = null; state.revealedWordCount = 0;
     stage(hidden() ? "استمع غيباً" : link() ? "ربط المحفوظ" : "استمع إلى القارئ");
     const keys = audioKeys(); let index = 0;
-    const next = () => { state.currentAudioVerseKey = keys[index]; audio.src = app.audioUrlFor(settings.reciter, keys[index]); log("teacher-audio"); assertAudio(); audio.onended = () => ++index < keys.length ? next() : teacherDone(); audio.play().catch(() => { setFeedback("تعذر تشغيل التلاوة حالياً.", true); teacherDone(); }); };
+    const next = async () => { state.currentAudioVerseKey = keys[index]; audio.src = app.audioUrlFor(settings.reciter, keys[index]); state.activeWordIndex = null; const timings = !hidden() && keys.length === 1 ? await wordTimings.get(settings.reciter, keys[index]) : null; log("teacher-audio"); assertAudio(); audio.ontimeupdate = () => { if (!timings) return; const item = timings.findIndex((timing) => audio.currentTime >= timing.start && audio.currentTime < timing.end); if (item !== state.activeWordIndex) { state.activeWordIndex = item < 0 ? null : item; renderMushaf(); } }; audio.onended = () => { audio.ontimeupdate = null; state.activeWordIndex = null; ++index < keys.length ? next() : teacherDone(); }; audio.play().catch(() => { setFeedback("تعذر تشغيل التلاوة حالياً.", true); teacherDone(); }); };
     next();
   }
-  function teacherDone() { state.phase = hidden() ? S.WAIT_HIDDEN : S.WAIT_VISIBLE; stage(hidden() ? `كررها ${link() ? "ثلاث" : "خمس"} مرات غيباً` : "اضغط هنا وردد مع القارئ"); }
+  function teacherDone() { state.phase = hidden() ? S.WAIT_HIDDEN : S.WAIT_VISIBLE; stage(hidden() ? `كررها ${link() ? "ثلاث" : "خمس"} مرات غيباً` : "استعد للترديد"); setTimeout(record, 350); }
   function startUnit() { state.sequenceState = "LEARNING_CURRENT_AYAH"; state.visibleCount = 0; state.hiddenCount = 0; state.link = 0; state.failures = 0; setCurrentTarget({ targetKind: "unit", hidden: false }); state.phase = S.TEACHER_VISIBLE; playTeacher(); }
   function startLink(kind, isHidden) { state.sequenceState = kind === "cross-link" ? "CROSS_AYAH_LINKING" : "INTERNAL_LINKING"; if (kind === "cross-link" && !state.currentAyahMastered) { console.error("Cross-ayah linking attempted before current ayah mastery"); return advanceToNextAyah(); } state.link = 0; state.failures = 0; setCurrentTarget({ targetKind: kind, hidden: isHidden }); state.phase = isHidden ? S.TEACHER_HIDDEN : S.TEACHER_VISIBLE; playTeacher(); }
   function afterUnit() { if (state.segmentIndex < ayah().segments.length - 1) { state.segmentIndex++; startLink("internal-link", false); } else completeAyah(); }
@@ -140,7 +152,7 @@
   function completeAyah() { state.currentAyahMastered = true; state.sequenceState = "CURRENT_AYAH_MASTERED"; if (!state.masteredAyahs.includes(ayah().ayah)) state.masteredAyahs.push(ayah().ayah); if (state.masteredAyahs.length === 1) return advanceToNextAyah(); startLink("cross-link", false); }
   function afterLink() { if (!hidden()) return startLink(state.targetKind, true); if (state.targetKind === "cross-link") return advanceToNextAyah(); state.segmentIndex++; startUnit(); }
   function correct() {
-    if (state.phase !== S.WAIT_VISIBLE && state.phase !== S.WAIT_HIDDEN) return;
+    if (![S.WAIT_VISIBLE, S.WAIT_HIDDEN, S.CHECK_VISIBLE, S.CHECK_HIDDEN].includes(state.phase)) return;
     const wasHidden = hidden(); state.wrongWordIndex = null; state.failures = 0; state.successes++;
     if (link()) state.link++; else if (wasHidden) state.hiddenCount++; else state.visibleCount++;
     state.phase = wasHidden ? S.CHECK_HIDDEN : S.CHECK_VISIBLE; setFeedback("✓ أحسنت"); render(); save();
@@ -152,17 +164,18 @@
     }, 560);
   }
   function wrong(expectedIndex = null) {
-    if (state.phase !== S.WAIT_VISIBLE && state.phase !== S.WAIT_HIDDEN) return;
+    if (![S.WAIT_VISIBLE, S.WAIT_HIDDEN, S.CHECK_VISIBLE, S.CHECK_HIDDEN].includes(state.phase)) return;
     state.failures++; state.mistakes++;
     const index = expectedIndex ?? Math.min(state.failures - 1, Math.max(0, state.expectedWords.length - 1));
     state.wrongWordIndex = index; state.revealedWordCount = Math.max(state.revealedWordCount, index);
-    if (state.failures >= 3) { state.hidden = false; state.phase = S.SETUP; stage("جاري إعادة تحفيظ الجزء"); setTimeout(startUnit, 700); }
+    if (state.failures >= 3) { state.hidden = false; state.phase = S.SETUP; stage("جاري إعادة تحفيظ الآية"); setTimeout(startUnit, 700); }
     else { setFeedback(`يوجد خطأ — تبقت ${nf.format(3 - state.failures)} محاولة`, true); render(); save(); }
   }
   // Adapter contract for a future real ASR service. It is intentionally word-based.
   function consumeRecognition(result) {
     const matched = result?.matchedWordIndexes || [];
     if (hidden() && matched.length) { state.revealedWordCount = Math.max(...matched.map(Number)) + 1; render(); }
+    if (!hidden() && matched.length) { state.activeWordIndex = Math.max(...matched.map(Number)); render(); }
     if (result?.mismatch && Number.isInteger(result.mismatch.expectedWordIndex)) return wrong(result.mismatch.expectedWordIndex);
     if (result?.complete || matched.length >= state.expectedWords.length) return correct();
     return false;
@@ -170,19 +183,19 @@
   const Recognizer = window.QuranRecitationRecognizer || class { async check() { return { available: false, matchedWordIndexes: [] }; } };
   function stopVad() { clearTimeout(silenceTimer); silenceTimer = null; try { audioContext?.close(); } catch {} audioContext = null; analyser = null; speechStarted = false; }
   function beginVad() {
-    if (!stream || !window.AudioContext) return;
+    if (!microphoneStream || !window.AudioContext) return;
     audioContext = new AudioContext(); analyser = audioContext.createAnalyser(); analyser.fftSize = 512;
-    audioContext.createMediaStreamSource(stream).connect(analyser); const samples = new Uint8Array(analyser.fftSize);
+    audioContext.createMediaStreamSource(microphoneStream).connect(analyser); const samples = new Uint8Array(analyser.fftSize);
     const poll = () => { if (recorder?.state !== "recording") return; analyser.getByteTimeDomainData(samples); const level = samples.reduce((total, value) => total + Math.abs(value - 128), 0) / samples.length; if (level > 5) { speechStarted = true; clearTimeout(silenceTimer); silenceTimer = null; } else if (speechStarted && !silenceTimer) silenceTimer = setTimeout(() => stopRecord(), 1450); requestAnimationFrame(poll); };
     requestAnimationFrame(poll);
   }
   async function record() {
-    if (state.phase !== S.WAIT_VISIBLE && state.phase !== S.WAIT_HIDDEN) return;
+    if (state.phase !== S.WAIT_VISIBLE && state.phase !== S.WAIT_HIDDEN || !microphoneReady || !microphoneStream) return;
     if (hidden()) { state.revealedWordCount = 0; state.wrongWordIndex = null; render(); }
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true }); chunks = []; recorder = new MediaRecorder(stream);
+      chunks = []; recorder = new MediaRecorder(microphoneStream);
       recorder.ondataavailable = (event) => chunks.push(event.data);
-      recorder.onstop = async () => { stopVad(); stream?.getTracks().forEach((track) => track.stop()); state.phase = hidden() ? S.CHECK_HIDDEN : S.CHECK_VISIBLE; stage("جاري التحقق..."); const result = await new Recognizer().check({ audioBlob: new Blob(chunks, { type: recorder.mimeType }), expectedText: state.expectedText, context: state }); if (!consumeRecognition(result)) { if (debug && result?.available === false) console.info("[Quran Memorization ASR] backend unavailable", result.reason); setFeedback(result?.available === false ? "تعذر التحقق الآن. يمكنك المحاولة لاحقاً." : "تعذر التحقق من هذه التلاوة. حاول مرة أخرى."); render(); } };
+      recorder.onstop = async () => { stopVad(); state.phase = hidden() ? S.CHECK_HIDDEN : S.CHECK_VISIBLE; stage("جاري التحقق..."); const result = await new Recognizer().check({ audioBlob: new Blob(chunks, { type: recorder.mimeType }), expectedText: state.expectedText, context: state }); if (!consumeRecognition(result)) { if (debug && result?.available === false) console.info("[Quran Memorization ASR] backend unavailable", result.reason); setFeedback(result?.available === false ? "تعذر التحقق الآن. يمكنك المحاولة لاحقاً." : "تعذر التحقق من هذه التلاوة. حاول مرة أخرى."); state.phase = hidden() ? S.WAIT_HIDDEN : S.WAIT_VISIBLE; render(); } };
       recorder.start(); beginVad(); state.phase = hidden() ? S.RECORD_HIDDEN : S.RECORD_VISIBLE; render();
     } catch { setFeedback("يلزم السماح باستخدام الميكروفون حتى يتم التحقق من التلاوة", true); }
   }
@@ -191,20 +204,22 @@
   function finish() { state.phase = S.COMPLETE; clearSession(); $("#memorizationStage").textContent = "ما شاء الله — أتممت الحفظ بنجاح"; $("#memorizationMushafStatus").textContent = "اكتملت جلسة التحفيظ."; render(); }
 
   function populateAyahs() { const count = app.ayahCounts[settings.surah]; for (const id of ["#memorizationFrom", "#memorizationTo", "#memorizationPreviewAyah"]) { const element = $(id), before = +element.value || 1; element.replaceChildren(...Array.from({ length: count }, (_, index) => new Option(`الآية ${nf.format(index + 1)}`, index + 1))); element.value = Math.min(before, count); } if (+$("#memorizationTo").value < +$("#memorizationFrom").value) $("#memorizationTo").value = $("#memorizationFrom").value; }
-  function validSetup() { const ok = settings.reciter && +$("#memorizationFrom").value <= +$("#memorizationTo").value; $("#startMemorization").disabled = !ok; $("#memorizationSetupMessage").textContent = ok ? "" : "تحقق من نطاق الآيات والقارئ."; }
-  function renderReciters() { const root = $("#memorizationReciterCards"), list = app.getEnabledReciters(); if (!settings.reciter || !list.some(([id]) => id === settings.reciter)) settings.reciter = list[0]?.[0] || ""; root.replaceChildren(...list.map(([id, name]) => { const card = document.createElement("label"), radio = document.createElement("input"), nameElement = document.createElement("span"), preview = document.createElement("button"); card.className = `memorization-reciter-card ${id === settings.reciter ? "selected" : ""}`; radio.type = "radio"; radio.name = "memorizationReciter"; radio.value = id; radio.checked = id === settings.reciter; nameElement.textContent = name; preview.type = "button"; preview.dataset.preview = id; preview.textContent = "استماع"; card.append(radio, nameElement, preview); return card; })); validSetup(); }
+  function validSetup() { const ok = microphoneReady && settings.reciter && +$("#memorizationFrom").value <= +$("#memorizationTo").value; $("#startMemorization").disabled = !ok; $("#memorizationSetupMessage").textContent = ok ? "" : microphoneReady ? "تحقق من نطاق الآيات والقارئ." : "فعّل الميكروفون لبدء جلسة التحفيظ."; }
+  function renderReciters() { const select = $("#memorizationReciter"), list = app.getEnabledReciters(); if (!settings.reciter || !list.some(([id]) => id === settings.reciter)) settings.reciter = list[0]?.[0] || ""; select.replaceChildren(...list.map(([id, name]) => new Option(name, id))); select.value = settings.reciter; validSetup(); }
   function resume() { try { const saved = JSON.parse(localStorage.getItem(storeKey) || "null"); if (localStorage.getItem(activeKey) !== "true" || saved?.schema !== 4 || !saved.state || saved.state.phase === S.COMPLETE) return false; settings = saved.settings; state = saved.state; state.svgRenderToken = 0; state.currentAyahMastered = !!state.currentAyahMastered; $("#home").classList.add("hidden"); $("#memorizationSetup").classList.add("hidden"); $("#memorizationSession").classList.remove("hidden"); $("#memorizationSessionTitle").textContent = `سورة ${app.surahNames[settings.surah]}`; $("#memorizationSessionRange").textContent = `الآيات ${nf.format(settings.from)} — ${nf.format(settings.to)}`; stage("تم استئناف الجلسة — تابع من حيث توقفت"); return true; } catch { return false; } }
   async function openSetup() { $("#home").classList.add("hidden"); $("#memorizationSetup").classList.remove("hidden"); await app.textReady; if (!restoreOffered) { restoreOffered = true; if (resume()) return; } const select = $("#memorizationSurah"); if (!select.options.length) select.replaceChildren(...app.surahNames.slice(1).map((name, index) => new Option(`${nf.format(index + 1)} — سورة ${name} (${nf.format(app.ayahCounts[index + 1])})`, index + 1))); select.value = settings.surah; populateAyahs(); renderReciters(); }
-  function start() { settings.surah = +$("#memorizationSurah").value; settings.from = +$("#memorizationFrom").value; settings.to = +$("#memorizationTo").value; if (settings.from > settings.to || !settings.reciter) return validSetup(); try { state = { units: units(), ayahIndex: 0, segmentIndex: 0, targetKind: "unit", hidden: false, visibleCount: 0, hiddenCount: 0, link: 0, failures: 0, successes: 0, mistakes: 0, masteredAyahs: [], phase: S.SETUP, sequenceState: "LEARNING_CURRENT_AYAH", currentAyahMastered: false, started: Date.now(), currentVerseKey: "", currentAudioVerseKey: "", currentPage: null, currentSegment: 0, segmentStartWord: 0, segmentEndWord: 0, expectedText: "", expectedWords: [], revealedWordCount: 0, wrongWordIndex: null, svgRenderToken: 0 }; } catch (error) { $("#memorizationSetupMessage").textContent = `تعذر تجهيز الآية: ${error.message}`; return; } $("#memorizationSetup").classList.add("hidden"); $("#memorizationSession").classList.remove("hidden"); $("#memorizationSessionTitle").textContent = `سورة ${app.surahNames[settings.surah]}`; $("#memorizationSessionRange").textContent = `الآيات ${nf.format(settings.from)} — ${nf.format(settings.to)}`; startUnit(); }
+  async function prepareMicrophone() { const button = $("#memorizationPermission"), hint = $("#memorizationPermissionHint"), section = button.closest(".memorization-permission"); button.disabled = true; hint.textContent = "جارٍ تجهيز الميكروفون…"; try { microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true }); microphoneReady = true; section.classList.add("ready"); button.textContent = "✓ الميكروفون جاهز"; hint.textContent = "سيبدأ الاستماع تلقائياً بعد انتهاء القارئ."; } catch { microphoneReady = false; hint.textContent = "لم نتمكن من استخدام الميكروفون. اسمح به من إعدادات المتصفح ثم أعد المحاولة."; button.disabled = false; } validSetup(); }
+  function start() { settings.surah = +$("#memorizationSurah").value; settings.from = +$("#memorizationFrom").value; settings.to = +$("#memorizationTo").value; if (settings.from > settings.to || !settings.reciter || !microphoneReady) return validSetup(); try { state = { units: units(), ayahIndex: 0, segmentIndex: 0, targetKind: "unit", hidden: false, visibleCount: 0, hiddenCount: 0, link: 0, failures: 0, successes: 0, mistakes: 0, masteredAyahs: [], phase: S.SETUP, sequenceState: "LEARNING_CURRENT_AYAH", currentAyahMastered: false, started: Date.now(), currentVerseKey: "", currentAudioVerseKey: "", currentPage: null, currentSegment: 0, segmentStartWord: 0, segmentEndWord: 0, expectedText: "", expectedWords: [], revealedWordCount: 0, wrongWordIndex: null, activeWordIndex: null, svgRenderToken: 0 }; } catch (error) { $("#memorizationSetupMessage").textContent = `تعذر تجهيز الآية: ${error.message}`; return; } $("#memorizationSetup").classList.add("hidden"); $("#memorizationSession").classList.remove("hidden"); $("#memorizationSessionTitle").textContent = `سورة ${app.surahNames[settings.surah]}`; $("#memorizationSessionRange").textContent = `الآيات ${nf.format(settings.from)} — ${nf.format(settings.to)}`; startUnit(); }
 
   $("#memorizeButton").onclick = openSetup;
   $("#memorizationSetupBack").onclick = () => { $("#memorizationSetup").classList.add("hidden"); $("#home").classList.remove("hidden"); };
   $("#memorizationSurah").onchange = (event) => { settings.surah = +event.target.value; populateAyahs(); renderReciters(); };
   ["#memorizationFrom", "#memorizationTo"].forEach((id) => $(id).onchange = validSetup);
-  $("#memorizationReciterCards").onchange = (event) => { if (event.target.name === "memorizationReciter") { settings.reciter = event.target.value; renderReciters(); } };
-  $("#memorizationReciterCards").onclick = (event) => { const id = event.target.dataset.preview; if (!id) return; event.preventDefault(); audio.src = app.audioUrlFor(id, `${settings.surah}:${$("#memorizationPreviewAyah").value}`); audio.play().catch(() => $("#memorizationSetupMessage").textContent = "تعذر تشغيل المعاينة حالياً."); };
+  $("#memorizationReciter").onchange = (event) => { settings.reciter = event.target.value; validSetup(); };
+  $("#memorizationPreviewAudio").onclick = () => { audio.src = app.audioUrlFor(settings.reciter, `${settings.surah}:${$("#memorizationPreviewAyah").value}`); audio.play().catch(() => $("#memorizationSetupMessage").textContent = "تعذر تشغيل المعاينة حالياً."); };
+  $("#memorizationPermission").onclick = prepareMicrophone;
   if (debug) $("#memorizationSession").classList.add("debug");
-  $("#startMemorization").onclick = start; $("#memorizationMic").onclick = record; $("#memorizationStop").onclick = stopRecord; $("#memorizationDemoCorrect").onclick = demoCorrect; $("#memorizationDemoError").onclick = () => wrong();
+  $("#startMemorization").onclick = start; $("#memorizationDemoCorrect").onclick = demoCorrect; $("#memorizationDemoError").onclick = () => wrong();
   $("#memorizationPause").onclick = () => { audio.pause(); stopRecord(); save(); $("#memorizationPause").textContent = "تم الحفظ مؤقتاً"; };
   $("#memorizationExit").onclick = () => $("#memorizationExitDialog").classList.remove("hidden");
   $("#memorizationExitCancel").onclick = () => $("#memorizationExitDialog").classList.add("hidden");
