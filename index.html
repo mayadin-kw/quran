@@ -34,10 +34,9 @@
       <div class="memorization-setup-fields">
         <label class="memorization-field memorization-field-wide">السورة<select id="memorizationSurah" aria-label="اختر السورة"></select></label>
         <div class="memorization-range"><label class="memorization-field">من الآية<select id="memorizationFrom" aria-label="من الآية"></select></label><label class="memorization-field">إلى الآية<select id="memorizationTo" aria-label="إلى الآية"></select></label></div>
-        <label class="memorization-field memorization-field-wide">آية المعاينة<select id="memorizationPreviewAyah" aria-label="معاينة الآية"></select></label>
       </div>
-      <section class="memorization-reciters"><div><h2>القارئ</h2><p>اختر قارئك ثم استمع إلى آية المعاينة.</p></div><div class="memorization-reciter-row"><select id="memorizationReciter" aria-label="اختر القارئ"></select><button id="memorizationPreviewAudio" type="button">▶ استماع</button></div></section>
-      <section class="memorization-permission" aria-labelledby="memorizationPermissionTitle"><div><h2 id="memorizationPermissionTitle">تجهيز الجلسة</h2><p id="memorizationPermissionHint">فعّل الميكروفون مرة واحدة قبل البدء.</p></div><button id="memorizationPermission" type="button">🎙 تفعيل الميكروفون</button></section>
+      <section class="memorization-reciters"><div><h2>القارئ</h2><p>اختر قارئك ثم استمع إلى معاينة عشوائية من القرآن.</p></div><div class="memorization-reciter-row"><select id="memorizationReciter" aria-label="اختر القارئ"></select><button id="memorizationPreviewAudio" type="button">▶ استماع</button></div></section>
+      <section class="memorization-permission" aria-labelledby="memorizationPermissionTitle"><div><h2 id="memorizationPermissionTitle">تجهيز الجلسة</h2><p id="memorizationPermissionHint">فعّل الميكروفون مرة واحدة قبل البدء.</p></div><button id="memorizationPermission" class="memorization-switch" type="button" role="switch" aria-checked="false" aria-label="تفعيل الميكروفون"><i aria-hidden="true"></i></button></section>
       <p id="memorizationSetupMessage" class="memorization-message" aria-live="polite"></p>
       <button id="startMemorization" class="memorization-start" type="button" disabled>ابدأ التحفيظ</button>
     </section>
@@ -145,13 +144,13 @@
   <audio id="memorizationAudio" preload="none"></audio>
   <link rel="stylesheet" href="reader-layout-fix.css?v=20260912-layout-3" />
   <link rel="stylesheet" href="memorization.css?v=20260914-session-ui-2" />
-  <link rel="stylesheet" href="memorization-ui-fix.css?v=20260915-stable-page-1" />
+  <link rel="stylesheet" href="memorization-ui-fix.css?v=20260915-preview-switch-1" />
   <script src="page-map.js?v=20260911-ayah-map-3"></script>
   <script src="app.js?v=20260914-memorization-data-2"></script>
   <script src="app-config.js?v=20260915-asr-url-1"></script>
   <script type="module" src="firebase-auth.js?v=20260915-anonymous-auth-1"></script>
   <script src="memorization-word-prototype.js?v=20260915-stable-page-2"></script>
   <script src="quran-asr-adapter.js?v=20260915-debug-diagnostics-1"></script>
-  <script src="memorization.js?v=20260915-stable-page-2"></script>
+  <script src="memorization.js?v=20260915-preview-switch-1"></script>
 </body>
 </html>
