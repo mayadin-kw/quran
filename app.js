@@ -675,7 +675,17 @@ $("#reciterSelect").onchange = (event) => {
 $("#audioTitle").textContent = reciterName(reciter);
 function getVerseText(verseKey) {
   const verse = PAGE_MAP.flatMap((entry) => entry.verses).find((entry) => entry[0] === verseKey);
-  return verse && quranText ? quranText.slice(verse[1], verse[2]).trim().replace(/\s*\(\d+\)\s*$/, "") : "";
+  if (!verse || !quranText) return "";
+  let text = quranText.slice(verse[1], verse[2]).trim().replace(/\s*\(\d+\)\s*$/, "");
+  // quran.txt contains a non-numbered basmala between the surah heading and
+  // the first numbered ayah. PAGE_MAP deliberately starts at that visual
+  // opening, so remove it for every surah except Al-Fatihah (where it is 1:1).
+  const [surah] = verseKey.split(":").map(Number);
+  if (surah !== 1) text = text.replace(/^بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ\s*/, "");
+  return text.trim();
+}
+function pageForVerse(verseKey) {
+  return PAGE_MAP.find((entry) => entry.verses.some((verse) => verse[0] === verseKey)) || null;
 }
 window.QuranAppData = {
   surahNames: N,
@@ -683,6 +693,11 @@ window.QuranAppData = {
   reciters: R,
   getEnabledReciters: () => enabledReciters.map((id) => [id, reciterName(id)]),
   getVerseText,
+  pageForVerse: (verseKey) => pageForVerse(verseKey)?.page || null,
+  mushafImageForVerse: (verseKey) => {
+    const page = pageForVerse(verseKey);
+    return page ? imgUrl(page.page) : "";
+  },
   textReady: quranTextReady,
   audioUrlFor: (reciterId, verseKey) => {
     const [surah, ayah] = verseKey.split(":");

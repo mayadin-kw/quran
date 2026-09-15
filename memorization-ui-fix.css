@@ -1,0 +1,5 @@
+/* Final presentation overrides for the active memorization session. */
+#memorizationSession .memorization-mic-area{display:flex;min-height:82px;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center}
+#memorizationSession .memorization-mic{margin-inline:auto}
+#memorizationSession .memorization-stop{grid-area:auto}
+#memorizationSession .memorization-mic-area p{grid-area:auto;margin:0}

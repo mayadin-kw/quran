@@ -23,7 +23,28 @@
     if (svg.nodeName.toLowerCase() !== "svg" || !svg.querySelector('g[id^="md-word-"][data-type="text"]')) throw new Error("SVG word metadata unavailable");
     svg.setAttribute("role", "img"); svg.setAttribute("aria-label", `صفحة ${page} من مصحف SVG`);
     host.replaceChildren(document.importNode(svg, true)); host.dataset.svgPage = String(page);
-    return host.querySelector("svg");
+    const renderedSvg = host.querySelector("svg");
+    cropToMushafContent(renderedSvg, page);
+    return renderedSvg;
+  }
+  // Source SVGs use a full 382.68 × 547.09 canvas while some opening pages
+  // contain a much smaller md-page-inner group. Crop only the presentation
+  // viewBox; all source coordinates and data-surah/data-aya/data-word-index
+  // identities remain untouched.
+  function cropToMushafContent(svg, page) {
+    const content = svg.querySelector("#md-page-inner");
+    if (!content || typeof content.getBBox !== "function") return;
+    const box = content.getBBox();
+    if (![box.x, box.y, box.width, box.height].every(Number.isFinite) || box.width < 1 || box.height < 1) return;
+    const paddingX = Math.max(8, box.width * .045), paddingY = Math.max(8, box.height * .035);
+    const x = Math.max(0, box.x - paddingX), y = Math.max(0, box.y - paddingY);
+    const original = svg.getAttribute("viewBox");
+    const width = Math.min(Number(original.split(/\s+/)[2]) - x, box.width + paddingX * 2);
+    const height = Math.min(Number(original.split(/\s+/)[3]) - y, box.height + paddingY * 2);
+    svg.dataset.originalViewBox = original;
+    svg.dataset.contentBounds = `${box.x.toFixed(2)},${box.y.toFixed(2)},${box.width.toFixed(2)},${box.height.toFixed(2)}`;
+    svg.setAttribute("viewBox", `${x.toFixed(2)} ${y.toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)}`);
+    console.info("[Quran Memorization SVG]", { page, originalViewBox: original, contentBounds: { x: box.x, y: box.y, width: box.width, height: box.height }, renderedViewBox: svg.getAttribute("viewBox") });
   }
   function allWords(host) { return [...host.querySelectorAll('g[id^="md-word-"][data-type="text"]')]; }
   function targetWords(host, targets) { return targets.flatMap((target) => [...host.querySelectorAll(selectorFor(target))]); }
