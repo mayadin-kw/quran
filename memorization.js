@@ -112,6 +112,7 @@
     try {
       await wordsView.loadPage(host, state.currentPage);
       if (token !== state.svgRenderToken) return;
+      wordsView.filterPageContent(host, { surah: settings.surah, from: settings.from, to: settings.to });
       const targets = svgTargets();
       const selected = wordsView.targetWords(host, targets);
       if (!selected.length) throw new Error(`Missing SVG words for ${state.currentVerseKey}`);

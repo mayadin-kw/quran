@@ -25,11 +25,15 @@
         const token = await getFirebaseToken(); if (token) headers.Authorization = `Bearer ${token}`;
         const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 45000), started = performance.now();
         const response = await fetch(endpoint, { method: "POST", body: form, headers, signal: controller.signal }); clearTimeout(timeout);
-        if (!response.ok) return { available: false, reason: `HTTP ${response.status}`, matchedWordIndexes: [] };
+        if (!response.ok) {
+          const body = await response.text().catch(() => "");
+          console.info("[Quran Memorization ASR] request failed", { endpoint, httpStatus: response.status, recordingMime: audioBlob.type, recordingBytes: audioBlob.size, durationMs: Math.round(performance.now() - started), error: body.slice(0, 300) });
+          return { available: false, reason: `HTTP ${response.status}`, matchedWordIndexes: [] };
+        }
         const result = await response.json();
         const matchedWordIndexes = (result.words || []).filter((word) => word.status === "correct" && Number.isInteger(word.expectedWordIndex)).map((word) => word.expectedWordIndex);
         const mismatch = result.firstMismatch || null;
-        console.info("[Quran Memorization ASR]", { endpoint, latencyMs: Math.round(performance.now() - started), httpStatus: response.status, recognizedText: result.recognizedText, expectedWords: context.expectedWords, alignment: result.words, confidence: result.confidence });
+        console.info("[Quran Memorization ASR]", { endpoint, latencyMs: Math.round(performance.now() - started), httpStatus: response.status, recordingMime: audioBlob.type, recordingBytes: audioBlob.size, recognizedText: result.recognizedText, expectedWords: context.expectedWords, alignment: result.words, confidence: result.confidence });
         return { available: !!result.success, complete: !!result.correct, matchedWordIndexes, mismatch, recognizedText: result.recognizedText || "", words: result.words || [] };
       } catch (error) { return { available: false, reason: error.message, matchedWordIndexes: [] }; }
     }

@@ -67,6 +67,11 @@ def rate_limit(request: Request) -> None:
     window.append(now)
 
 
+def log_event(event: str, **detail: object) -> None:
+    """Production-safe operational telemetry: never include tokens or audio."""
+    print(json.dumps({"event": event, **detail}), flush=True)
+
+
 def duration_seconds(path: Path) -> float:
     output = subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(path)], text=True).strip()
     return float(output)
@@ -95,13 +100,19 @@ def ready() -> dict:
 
 @app.post("/api/recitation/check", response_model=CheckResponse)
 async def check_recitation(request: Request, audio: UploadFile = File(...), surah: int = Form(...), ayah: int = Form(...), verseKey: str = Form(...), segmentStartWord: int = Form(...), segmentEndWord: int = Form(...), expectedText: str = Form(...), expectedWords: str = Form(...)) -> CheckResponse:
-    verify_firebase_token(request); rate_limit(request)
+    raw_mime = audio.content_type or ""
+    mime = raw_mime.split(";", 1)[0].strip().lower()
+    log_event("request_received", verseKey=verseKey, audioMime=raw_mime)
+    verify_firebase_token(request); log_event("authenticated", verseKey=verseKey, authenticated=True); rate_limit(request)
     try: words_raw = json.loads(expectedWords)
     except json.JSONDecodeError as error: raise HTTPException(422, "invalid_expected_words") from error
     if not isinstance(words_raw, list) or not all(isinstance(word, str) for word in words_raw): raise HTTPException(422, "invalid_expected_words")
     validate_form(surah, ayah, verseKey, segmentStartWord, segmentEndWord, expectedText, words_raw)
-    if audio.content_type not in ALLOWED_MIME: raise HTTPException(415, "unsupported_audio_type")
+    if mime not in ALLOWED_MIME:
+        log_event("request_rejected", verseKey=verseKey, category="unsupported_audio_type", audioMime=raw_mime)
+        raise HTTPException(415, "unsupported_audio_type")
     data = await audio.read(MAX_BYTES + 1)
+    log_event("audio_received", verseKey=verseKey, audioMime=raw_mime, audioBytes=len(data))
     if len(data) > MAX_BYTES: raise HTTPException(413, "audio_too_large")
     if not data: return CheckResponse(success=False, error="no_speech_detected")
     with tempfile.TemporaryDirectory(prefix="quran-asr-") as directory:
@@ -110,13 +121,17 @@ async def check_recitation(request: Request, audio: UploadFile = File(...), sura
         try:
             if not MIN_SECONDS <= duration_seconds(source) <= MAX_SECONDS: return CheckResponse(success=False, error="no_speech_detected")
             to_wav(source, wav)
+            log_event("asr_started", verseKey=verseKey)
             recognized_text, latency = await asyncio.to_thread(recognizer.transcribe, wav)
-        except (subprocess.SubprocessError, ValueError): return CheckResponse(success=False, error="invalid_audio")
+            log_event("asr_finished", verseKey=verseKey, seconds=round(latency, 3))
+        except (subprocess.SubprocessError, ValueError) as error:
+            log_event("asr_failed", verseKey=verseKey, category="invalid_audio", errorType=type(error).__name__)
+            return CheckResponse(success=False, error="invalid_audio")
     expected = normalize_words(words_raw); recognized = normalize_words(normalize(recognized_text).split())
     alignment = align(expected, recognized)
     results = [WordResult(expectedWordIndex=item.expected_index, expected=item.expected, recognized=item.recognized, status=item.status) for item in alignment]
     mismatch = next((item for item in alignment if item.status in {"wrong", "missing"}), None)
     correct = mismatch is None and not any(item.status == "extra" for item in alignment) and bool(expected)
     first_mismatch = None if mismatch is None else {"expectedWordIndex": mismatch.expected_index, "type": "substitution" if mismatch.status == "wrong" else "missing"}
-    print(json.dumps({"event": "recognition", "verseKey": verseKey, "seconds": round(latency, 3), "correct": correct}), flush=True)
+    log_event("alignment_finished", verseKey=verseKey, correct=correct, seconds=round(latency, 3))
     return CheckResponse(success=True, verseKey=verseKey, recognizedText=recognized_text, normalizedRecognizedText=" ".join(recognized), confidence=None, correct=correct, words=results, firstMismatch=first_mismatch)

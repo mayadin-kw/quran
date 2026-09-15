@@ -23,15 +23,13 @@
     if (svg.nodeName.toLowerCase() !== "svg" || !svg.querySelector('g[id^="md-word-"][data-type="text"]')) throw new Error("SVG word metadata unavailable");
     svg.setAttribute("role", "img"); svg.setAttribute("aria-label", `صفحة ${page} من مصحف SVG`);
     host.replaceChildren(document.importNode(svg, true)); host.dataset.svgPage = String(page);
-    const renderedSvg = host.querySelector("svg");
-    cropToMushafContent(renderedSvg, page);
-    return renderedSvg;
+    return host.querySelector("svg");
   }
   // Crop only the presentation camera. The source coordinate system, word ids,
   // and word metadata remain untouched. Page inner can include invisible or
   // decorative canvas space, so build bounds from rendered Quran content first.
   function cropToMushafContent(svg, page) {
-    const candidates = [...svg.querySelectorAll('g[id^="md-word-"], g[data-type="ayah"], g[id*="surah" i], g[id*="title" i]')];
+    const candidates = [...svg.querySelectorAll('g[id^="md-word-"], g[id^="md-aya-mark-"], g[data-type="surah-name"], g[data-type="bismillah"]')].filter((node) => !node.closest('[style*="display: none"]'));
     const boxes = candidates.map((node) => { try { return node.getBBox(); } catch { return null; } }).filter((box) => box && box.width > .1 && box.height > .1);
     const content = svg.querySelector("#md-page-inner");
     if (!boxes.length && content && typeof content.getBBox === "function") boxes.push(content.getBBox());
@@ -49,6 +47,24 @@
     svg.dataset.contentBounds = `${box.x.toFixed(2)},${box.y.toFixed(2)},${box.width.toFixed(2)},${box.height.toFixed(2)}`;
     svg.setAttribute("viewBox", `${x.toFixed(2)} ${y.toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)}`);
     console.info("[Quran Memorization SVG]", { page, originalViewBox: original, contentBounds: { x: box.x, y: box.y, width: box.width, height: box.height }, renderedViewBox: svg.getAttribute("viewBox") });
+  }
+  // A source page is never a memorization display contract. Keep only the
+  // selected range, its ayah marks, and the immediately associated heading /
+  // basmala line; then crop from those retained elements.
+  function filterPageContent(host, { surah, from, to }) {
+    const svg = host.querySelector("svg"); if (!svg) return;
+    const wanted = (node) => Number(node.dataset.surah) === Number(surah) && Number(node.dataset.aya) >= Number(from) && Number(node.dataset.aya) <= Number(to);
+    const lines = [...svg.querySelectorAll('g[id^="md-line-"]')];
+    lines.forEach((line, index) => {
+      const hasTarget = [...line.querySelectorAll('[data-surah][data-aya]')].some(wanted);
+      const type = line.dataset.type;
+      const nextTarget = lines.slice(index + 1, index + 3).some((next) => [...next.querySelectorAll('[data-surah][data-aya]')].some((node) => wanted(node) && Number(node.dataset.aya) === 1));
+      line.style.display = hasTarget || (Number(from) === 1 && nextTarget && (type === "surah-name" || type === "bismillah")) ? "" : "none";
+    });
+    // The page-level ornamental header is not associated with the selected
+    // range and otherwise leaks the page's unrelated surah name.
+    svg.querySelector('#md-non-quranic-header-surah-name')?.closest('g[id^="md-page-outer"]')?.style.setProperty('display', 'none');
+    cropToMushafContent(svg, host.dataset.svgPage);
   }
   function allWords(host) { return [...host.querySelectorAll('g[id^="md-word-"][data-type="text"]')]; }
   function targetWords(host, targets) { return targets.flatMap((target) => [...host.querySelectorAll(selectorFor(target))]); }
@@ -76,5 +92,5 @@
       console.info("[Quran Memorization Words]", { page: Number(host.dataset.svgPage), verseKey: `${Number(word.dataset.surah)}:${Number(word.dataset.aya)}`, wordIndex: Number(word.dataset.wordIndexInAyah), state: word.classList.contains("mem-word-wrong") ? "wrong" : word.classList.contains("mem-word-hidden") ? "hidden" : "visible", geometry: box });
     }); svg.append(layer);
   }
-  window.MemorizationSvgWords = { loadPage, renderWords, targetWords };
+  window.MemorizationSvgWords = { loadPage, filterPageContent, renderWords, targetWords };
 })();
