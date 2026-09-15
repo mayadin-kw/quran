@@ -11,3 +11,19 @@
 #memorizationSession .memorization-mic-area{min-height:62px;gap:3px}#memorizationSession .memorization-mic{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;background:#edf1e9;color:#46685b;font-size:17px;box-shadow:none;cursor:default}#memorizationSession .memorization-mic.recording{animation:micPulse 1.3s infinite;background:#c9594a;color:#fff}#memorizationSession .memorization-mic-area p{color:#506a62;font-size:12px;font-weight:700}.memorization-mushaf .mem-word-active path{fill:#2075bb!important}.memorization-mushaf .mem-word-wrong{opacity:0!important}.memorization-mushaf .mem-word-wrong-box{fill:none;stroke:#bd382d;stroke-width:1.5}
 
 @media(max-width:600px){.memorization-header{height:64px}.memorization-setup-card{margin-top:2px;padding:16px;border-radius:19px}.memorization-setup-card h1{font-size:21px}}
+
+/* Stable session order: no implicit grid row may push repetition downward. */
+#memorizationSession .memorization-session-card{grid-template-rows:auto auto auto auto minmax(0,1fr) auto auto auto;align-content:stretch}
+#memorizationSession .memorization-stage{order:0;margin:0 0 1px}
+#memorizationSession .memorization-repetition{order:0}
+#memorizationSession .memorization-mushaf-wrap{order:0;min-height:0}
+#memorizationSession .memorization-feedback{order:0}
+#memorizationSession .memorization-mic-area{order:0}
+
+/* A fixed-proportion, deliberately quiet Mushaf page. Hidden SVG content keeps
+   its true page slots while this frame supplies the physical-page character. */
+#memorizationSession .memorization-mushaf{position:relative;padding:7px;box-sizing:border-box;background:linear-gradient(135deg,#fffefa,#f8f3e7);border:1px solid #e0d2ad;box-shadow:inset 0 0 0 3px #fffaf0,inset 0 0 0 4px #e8dcc0,0 5px 18px #15382b18}
+#memorizationSession .memorization-mushaf::before{content:"";position:absolute;inset:13px;border:1px solid #d9c99d;border-radius:4px;pointer-events:none;opacity:.72}
+#memorizationSession .memorization-mushaf svg{position:relative;z-index:1;width:auto;height:100%;max-width:100%;max-height:100%;preserveAspectRatio:xMidYMid meet}
+#memorizationSession .memorization-debug{max-height:19dvh;overflow:auto;box-sizing:border-box;margin:0;padding:9px;border:1px dashed #c8a964;border-radius:9px;background:#fff9e9;color:#314d43;direction:ltr;text-align:left;white-space:pre-wrap;word-break:break-word;font:10px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;user-select:text}
+@media(max-width:600px){#memorizationSession .memorization-session-card{grid-template-rows:auto auto auto auto minmax(0,1fr) auto auto auto;gap:6px}#memorizationSession .memorization-mushaf{padding:6px}#memorizationSession .memorization-mushaf::before{inset:10px}}

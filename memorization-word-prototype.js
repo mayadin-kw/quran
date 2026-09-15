@@ -25,46 +25,30 @@
     host.replaceChildren(document.importNode(svg, true)); host.dataset.svgPage = String(page);
     return host.querySelector("svg");
   }
-  // Crop only the presentation camera. The source coordinate system, word ids,
-  // and word metadata remain untouched. Page inner can include invisible or
-  // decorative canvas space, so build bounds from rendered Quran content first.
-  function cropToMushafContent(svg, page) {
-    const candidates = [...svg.querySelectorAll('g[id^="md-word-"], g[id^="md-aya-mark-"], g[data-type="surah-name"], g[data-type="bismillah"]')].filter((node) => !node.closest('[style*="display: none"]'));
-    const boxes = candidates.map((node) => { try { return node.getBBox(); } catch { return null; } }).filter((box) => box && box.width > .1 && box.height > .1);
-    const content = svg.querySelector("#md-page-inner");
-    if (!boxes.length && content && typeof content.getBBox === "function") boxes.push(content.getBBox());
-    if (!boxes.length) return;
-    const box = { x: Math.min(...boxes.map((item) => item.x)), y: Math.min(...boxes.map((item) => item.y)), width: 0, height: 0 };
-    const right = Math.max(...boxes.map((item) => item.x + item.width)), bottom = Math.max(...boxes.map((item) => item.y + item.height));
-    box.width = right - box.x; box.height = bottom - box.y;
-    if (![box.x, box.y, box.width, box.height].every(Number.isFinite) || box.width < 1 || box.height < 1) return;
-    const paddingX = Math.max(8, box.width * .045), paddingY = Math.max(8, box.height * .035);
-    const x = Math.max(0, box.x - paddingX), y = Math.max(0, box.y - paddingY);
-    const original = svg.getAttribute("viewBox");
-    const width = Math.min(Number(original.split(/\s+/)[2]) - x, box.width + paddingX * 2);
-    const height = Math.min(Number(original.split(/\s+/)[3]) - y, box.height + paddingY * 2);
-    svg.dataset.originalViewBox = original;
-    svg.dataset.contentBounds = `${box.x.toFixed(2)},${box.y.toFixed(2)},${box.width.toFixed(2)},${box.height.toFixed(2)}`;
-    svg.setAttribute("viewBox", `${x.toFixed(2)} ${y.toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)}`);
-    console.info("[Quran Memorization SVG]", { page, originalViewBox: original, contentBounds: { x: box.x, y: box.y, width: box.width, height: box.height }, renderedViewBox: svg.getAttribute("viewBox") });
-  }
-  // A source page is never a memorization display contract. Keep only the
-  // selected range, its ayah marks, and the immediately associated heading /
-  // basmala line; then crop from those retained elements.
+  // A source page supplies a stable physical canvas; it is never cropped to a
+  // selected range. We hide unrelated Quran content in-place so every range
+  // retains the same page composition and original word coordinates.
   function filterPageContent(host, { surah, from, to }) {
     const svg = host.querySelector("svg"); if (!svg) return;
     const wanted = (node) => Number(node.dataset.surah) === Number(surah) && Number(node.dataset.aya) >= Number(from) && Number(node.dataset.aya) <= Number(to);
     const lines = [...svg.querySelectorAll('g[id^="md-line-"]')];
+    const nextVerse = (index) => {
+      for (const line of lines.slice(index + 1)) { const verse = line.querySelector('[data-surah][data-aya]'); if (verse) return verse; }
+      return null;
+    };
     lines.forEach((line, index) => {
       const hasTarget = [...line.querySelectorAll('[data-surah][data-aya]')].some(wanted);
       const type = line.dataset.type;
-      const nextTarget = lines.slice(index + 1, index + 3).some((next) => [...next.querySelectorAll('[data-surah][data-aya]')].some((node) => wanted(node) && Number(node.dataset.aya) === 1));
-      line.style.display = hasTarget || (Number(from) === 1 && nextTarget && (type === "surah-name" || type === "bismillah")) ? "" : "none";
+      const following = nextVerse(index);
+      const isSelectedSurahContext = following && Number(following.dataset.surah) === Number(surah) && Number(following.dataset.aya) === 1;
+      line.style.visibility = hasTarget || (isSelectedSurahContext && (type === "surah-name" || type === "bismillah")) ? "visible" : "hidden";
     });
-    // The page-level ornamental header is not associated with the selected
-    // range and otherwise leaks the page's unrelated surah name.
-    svg.querySelector('#md-non-quranic-header-surah-name')?.closest('g[id^="md-page-outer"]')?.style.setProperty('display', 'none');
-    cropToMushafContent(svg, host.dataset.svgPage);
+    // Some source lines contain multiple nested ligature groups. Filter each
+    // real word/ayah-marker group as well, rather than relying on line order.
+    svg.querySelectorAll('[data-surah][data-aya]').forEach((node) => { node.style.visibility = wanted(node) ? "visible" : "hidden"; });
+    svg.querySelector('#md-non-quranic-header-surah-name')?.closest('g[id^="md-page-outer"]')?.style.setProperty('visibility', 'hidden');
+    const original = svg.dataset.originalViewBox || svg.getAttribute("viewBox");
+    svg.dataset.originalViewBox = original; svg.setAttribute("viewBox", original);
   }
   function allWords(host) { return [...host.querySelectorAll('g[id^="md-word-"][data-type="text"]')]; }
   function targetWords(host, targets) { return targets.flatMap((target) => [...host.querySelectorAll(selectorFor(target))]); }

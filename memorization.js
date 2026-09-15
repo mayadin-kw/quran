@@ -84,7 +84,7 @@
   }
   function log(event) {
     if (!debug || !state) return;
-    const detail = { event, currentVerseKey: state.currentVerseKey, currentSegment: state.currentSegment, currentPage: state.currentPage, audioVerseKey: state.currentAudioVerseKey, expectedText: state.expectedText, stage: state.phase, revealedWordCount: state.revealedWordCount, wrongWordIndex: state.wrongWordIndex };
+    const detail = { event, currentVerseKey: state.currentVerseKey, currentSegment: state.currentSegment, currentPage: state.currentPage, audioVerseKey: state.currentAudioVerseKey, expectedText: state.expectedText, stage: state.phase, revealedWordCount: state.revealedWordCount, wrongWordIndex: state.wrongWordIndex, asr: window.QuranAsrDiagnostic || null };
     console.info("[Quran Memorization]", detail);
     let panel = $("#memorizationDebug");
     if (!panel) { panel = document.createElement("pre"); panel.id = "memorizationDebug"; panel.className = "memorization-debug"; $("#memorizationSession").append(panel); }
@@ -196,8 +196,8 @@
     try {
       chunks = []; recorder = new MediaRecorder(microphoneStream);
       recorder.ondataavailable = (event) => chunks.push(event.data);
-      recorder.onstop = async () => { stopVad(); state.phase = hidden() ? S.CHECK_HIDDEN : S.CHECK_VISIBLE; stage("جاري التحقق..."); const result = await new Recognizer().check({ audioBlob: new Blob(chunks, { type: recorder.mimeType }), expectedText: state.expectedText, context: state }); if (!consumeRecognition(result)) { if (debug && result?.available === false) console.info("[Quran Memorization ASR] backend unavailable", result.reason); setFeedback(result?.available === false ? "تعذر التحقق الآن. يمكنك المحاولة لاحقاً." : "تعذر التحقق من هذه التلاوة. حاول مرة أخرى."); state.phase = hidden() ? S.WAIT_HIDDEN : S.WAIT_VISIBLE; render(); } };
-      recorder.start(); beginVad(); state.phase = hidden() ? S.RECORD_HIDDEN : S.RECORD_VISIBLE; render();
+      recorder.onstop = async () => { stopVad(); state.recordingDurationMs = Math.round(performance.now() - state.recordingStartedAt); state.phase = hidden() ? S.CHECK_HIDDEN : S.CHECK_VISIBLE; stage("جاري التحقق..."); const result = await new Recognizer().check({ audioBlob: new Blob(chunks, { type: recorder.mimeType }), expectedText: state.expectedText, context: state }); if (debug) log("asr-result"); if (!consumeRecognition(result)) { if (debug && result?.available === false) console.info("[Quran Memorization ASR] backend unavailable", result.reason); setFeedback(result?.available === false ? "تعذر التحقق الآن. يمكنك المحاولة لاحقاً." : "تعذر التحقق من هذه التلاوة. حاول مرة أخرى."); state.phase = hidden() ? S.WAIT_HIDDEN : S.WAIT_VISIBLE; render(); } };
+      state.recordingStartedAt = performance.now(); recorder.start(); beginVad(); state.phase = hidden() ? S.RECORD_HIDDEN : S.RECORD_VISIBLE; render();
     } catch { setFeedback("يلزم السماح باستخدام الميكروفون حتى يتم التحقق من التلاوة", true); }
   }
   function stopRecord() { if (recorder?.state === "recording") recorder.stop(); }
