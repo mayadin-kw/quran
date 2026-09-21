@@ -25,28 +25,23 @@
     host.replaceChildren(document.importNode(svg, true)); host.dataset.svgPage = String(page);
     return host.querySelector("svg");
   }
-  // A source page supplies a stable physical canvas; it is never cropped to a
-  // selected range. We hide unrelated Quran content in-place so every range
-  // retains the same page composition and original word coordinates.
+  // A source page is a real physical Mushaf page: it is never cropped.  The
+  // surrounding verses remain visible as quiet context, while the requested
+  // range is the only part that may be hidden or highlighted during practice.
   function filterPageContent(host, { surah, from, to }) {
     const svg = host.querySelector("svg"); if (!svg) return;
     const wanted = (node) => Number(node.dataset.surah) === Number(surah) && Number(node.dataset.aya) >= Number(from) && Number(node.dataset.aya) <= Number(to);
-    const lines = [...svg.querySelectorAll('g[id^="md-line-"]')];
-    const nextVerse = (index) => {
-      for (const line of lines.slice(index + 1)) { const verse = line.querySelector('[data-surah][data-aya]'); if (verse) return verse; }
-      return null;
-    };
-    lines.forEach((line, index) => {
-      const hasTarget = [...line.querySelectorAll('[data-surah][data-aya]')].some(wanted);
-      const type = line.dataset.type;
-      const following = nextVerse(index);
-      const isSelectedSurahContext = following && Number(following.dataset.surah) === Number(surah) && Number(following.dataset.aya) === 1;
-      line.style.visibility = hasTarget || (isSelectedSurahContext && (type === "surah-name" || type === "bismillah")) ? "visible" : "hidden";
+    svg.querySelectorAll('g[id^="md-line-"]').forEach((node) => {
+      const containsTarget = [...node.querySelectorAll('[data-surah][data-aya]')].some(wanted);
+      node.style.visibility = "visible";
+      node.classList.toggle("mem-page-context", !containsTarget);
+      node.classList.toggle("mem-page-target", containsTarget);
     });
-    // Some source lines contain multiple nested ligature groups. Filter each
-    // real word/ayah-marker group as well, rather than relying on line order.
-    svg.querySelectorAll('[data-surah][data-aya]').forEach((node) => { node.style.visibility = wanted(node) ? "visible" : "hidden"; });
-    svg.querySelector('#md-non-quranic-header-surah-name')?.closest('g[id^="md-page-outer"]')?.style.setProperty('visibility', 'hidden');
+    svg.querySelectorAll('[data-surah][data-aya]').forEach((node) => {
+      node.style.visibility = "visible";
+      node.classList.toggle("mem-page-context", !wanted(node));
+      node.classList.toggle("mem-page-target", wanted(node));
+    });
     const original = svg.dataset.originalViewBox || svg.getAttribute("viewBox");
     svg.dataset.originalViewBox = original; svg.setAttribute("viewBox", original);
   }
@@ -54,7 +49,7 @@
   function targetWords(host, targets) { return targets.flatMap((target) => [...host.querySelectorAll(selectorFor(target))]); }
   function renderWords(host, targets, { revealCount = 0, wrongIndex = null, activeIndex = null } = {}) {
     const svg = host.querySelector("svg"); svg?.querySelector("#memorizationWrongWordLayer")?.remove();
-    const words = allWords(host); words.forEach((word) => word.classList.remove("mem-word-visible", "mem-word-wrong", "mem-word-active")); words.forEach((word) => word.classList.add("mem-word-hidden"));
+    const words = allWords(host); words.forEach((word) => word.classList.remove("mem-word-visible", "mem-word-hidden", "mem-word-wrong", "mem-word-active"));
     const selected = targetWords(host, targets);
     selected.slice(0, revealCount).forEach((word) => { word.classList.remove("mem-word-hidden"); word.classList.add("mem-word-visible"); });
     if (activeIndex !== null && selected[activeIndex]) { selected[activeIndex].classList.remove("mem-word-hidden"); selected[activeIndex].classList.add("mem-word-visible", "mem-word-active"); }
