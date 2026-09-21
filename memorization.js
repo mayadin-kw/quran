@@ -9,7 +9,7 @@
   const debug = new URLSearchParams(location.search).get("debugMemorization") === "true";
   const S = { SETUP:"SETUP", TEACHER_VISIBLE:"TEACHER_PLAYING_VISIBLE", WAIT_VISIBLE:"WAITING_VISIBLE_REPEAT", RECORD_VISIBLE:"RECORDING_VISIBLE", CHECK_VISIBLE:"CHECKING_VISIBLE", TEACHER_HIDDEN:"TEACHER_PLAYING_HIDDEN", WAIT_HIDDEN:"WAITING_HIDDEN_REPEAT", RECORD_HIDDEN:"RECORDING_HIDDEN", CHECK_HIDDEN:"CHECKING_HIDDEN", COMPLETE:"COMPLETE" };
   let settings = { surah: 1, from: 1, to: 7, reciter: "" };
-  let state, recorder, microphoneStream, chunks = [], restoreOffered = false, audioContext, analyser, silenceTimer, speechStarted = false, microphoneReady = false, liveRecognition = null, liveRecognitionWanted = false;
+  let state, recorder, microphoneStream, chunks = [], restoreOffered = false, audioContext, analyser, silenceTimer, speechStarted = false, microphoneReady = false, liveTurn = null, liveRecording = false;
   const nf = new Intl.NumberFormat("ar-EG");
   const normalize = (text) => text.normalize("NFD").replace(/[\u064B-\u065F\u0670\u06D6-\u06EDـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/[^\u0621-\u064Aa-zA-Z\s]/g, " ").replace(/\s+/g, " ").trim();
   const verseKey = (ayah) => `${settings.surah}:${ayah}`;
@@ -112,6 +112,39 @@
     if (targetKind !== "cross-link") { state.currentAudioVerseKey = state.currentVerseKey; audio.src = app.audioUrlFor(settings.reciter, state.currentVerseKey); }
     assertAudio(); log("setCurrentTarget");
   }
+  function closeLiveTurn() { liveTurn?.close(); liveTurn = null; liveRecording = false; }
+  function liveContext() { const [surah, ayahNumber] = state.currentVerseKey.split(":").map(Number); return { surah, ayah: ayahNumber, verseKey: state.currentVerseKey, segmentStartWord: state.segmentStartWord, segmentEndWord: state.segmentEndWord, expectedWords: state.expectedWords }; }
+  async function prepareLiveTurn() {
+    closeLiveTurn();
+    if (!window.QuranLiveRecitation) return;
+    const turn = liveTurn = new window.QuranLiveRecitation(liveContext(), {
+      ready: () => { if (/^TEACHER/.test(state.phase)) setFeedback("جاهز للتلاوة المباشرة"); },
+      event: (event) => {
+        if (!state || turn !== liveTurn) return;
+        if (event.type === "speech_started") { setFeedback("جاري الاستماع…"); return; }
+        if (event.type === "word_committed") {
+          const index = Number(event.wordIndex);
+          state.activeWordIndex = index;
+          if (hidden()) state.revealedWordCount = Math.max(state.revealedWordCount, index + 1);
+          setFeedback("✓ تم تأكيد كلمة"); render(); return;
+        }
+        if (event.type === "word_wrong" || event.type === "word_missing") { wrong(Number(event.wordIndex)); return; }
+        if (event.type === "verification_complete") {
+          liveRecording = false;
+          if (event.complete) correct();
+          else if (![S.SETUP, S.TEACHER_VISIBLE, S.TEACHER_HIDDEN].includes(state.phase)) { setFeedback("لم تكتمل التلاوة. أعد المحاولة.", true); state.phase = hidden() ? S.WAIT_HIDDEN : S.WAIT_VISIBLE; stage("جاهز للتلاوة"); }
+          closeLiveTurn();
+        }
+      },
+      error: (error) => {
+        if (turn !== liveTurn) return;
+        console.error("[Quran Memorization Live ASR]", error);
+        liveRecording = false; setFeedback("تعذر الاتصال بالتحقق المباشر. ستُعاد المحاولة بأمان.", true);
+        if (/^RECORD/.test(state?.phase || "")) { state.phase = hidden() ? S.WAIT_HIDDEN : S.WAIT_VISIBLE; stage("جاهز للتلاوة"); }
+      },
+    });
+    try { await turn.prepare(); } catch (error) { if (turn === liveTurn) { console.info("[Quran Memorization] live ASR preparation failed", error.message); closeLiveTurn(); } }
+  }
   function audioKeys() { return state.targetKind === "cross-link" ? state.units.slice(0, state.ayahIndex + 1).map((item) => item.verseKey) : [state.currentVerseKey]; }
 
   async function renderMushaf() {
@@ -151,6 +184,7 @@
     state.wrongWordIndex = null; state.revealedWordCount = 0;
     stage(hidden() ? "استمع غيباً" : link() ? "ربط المحفوظ" : "استمع إلى القارئ");
     const keys = audioKeys(); let index = 0;
+    prepareLiveTurn();
     const next = async () => { state.currentAudioVerseKey = keys[index]; audio.src = app.audioUrlFor(settings.reciter, keys[index]); state.activeWordIndex = null; const timings = !hidden() && keys.length === 1 ? await wordTimings.get(settings.reciter, keys[index]) : null; log("teacher-audio"); assertAudio(); audio.ontimeupdate = () => { if (!timings) return; const timing = timings.find((item) => audio.currentTime >= item.start && audio.currentTime < item.end); const startWord = state.targetKind === "unit" ? unit().startWord : 0; const item = timing ? (Number.isInteger(timing.wordIndex) ? timing.wordIndex - startWord : timings.indexOf(timing) - startWord) : null; if (item !== state.activeWordIndex) { state.activeWordIndex = item !== null && item >= 0 ? item : null; renderMushaf(); } }; audio.onended = () => { audio.ontimeupdate = null; state.activeWordIndex = null; ++index < keys.length ? next() : teacherDone(); }; audio.play().catch(() => { setFeedback("تعذر تشغيل التلاوة حالياً.", true); teacherDone(); }); };
     next();
   }
@@ -162,7 +196,7 @@
   function completeAyah() { state.currentAyahMastered = true; state.sequenceState = "CURRENT_AYAH_MASTERED"; if (!state.masteredAyahs.includes(ayah().ayah)) state.masteredAyahs.push(ayah().ayah); if (state.masteredAyahs.length === 1) return advanceToNextAyah(); startLink("cross-link", false); }
   function afterLink() { if (!hidden()) return startLink(state.targetKind, true); if (state.targetKind === "cross-link") return advanceToNextAyah(); state.segmentIndex++; startUnit(); }
   function correct() {
-    if (![S.WAIT_VISIBLE, S.WAIT_HIDDEN, S.CHECK_VISIBLE, S.CHECK_HIDDEN].includes(state.phase)) return;
+    if (![S.WAIT_VISIBLE, S.WAIT_HIDDEN, S.RECORD_VISIBLE, S.RECORD_HIDDEN, S.CHECK_VISIBLE, S.CHECK_HIDDEN].includes(state.phase)) return;
     const wasHidden = hidden(); state.wrongWordIndex = null; state.failures = 0; state.successes++;
     if (link()) state.link++; else if (wasHidden) state.hiddenCount++; else state.visibleCount++;
     state.phase = wasHidden ? S.CHECK_HIDDEN : S.CHECK_VISIBLE; setFeedback("✓ أحسنت"); render(); save();
@@ -178,7 +212,7 @@
     state.failures++; state.mistakes++;
     const index = expectedIndex ?? Math.min(state.failures - 1, Math.max(0, state.expectedWords.length - 1));
     state.wrongWordIndex = index; state.revealedWordCount = Math.max(state.revealedWordCount, index);
-    if (state.failures >= 3) { state.hidden = false; state.phase = S.SETUP; stage("جاري إعادة تحفيظ الآية"); setTimeout(startUnit, 700); }
+    if (state.failures >= 3) { closeLiveTurn(); state.hidden = false; state.phase = S.SETUP; stage("جاري إعادة تحفيظ الآية"); setTimeout(startUnit, 700); }
     else { setFeedback(`يوجد خطأ — تبقت ${nf.format(3 - state.failures)} محاولة`, true); render(); save(); }
   }
   // Adapter contract for a future real ASR service. It is intentionally word-based.
@@ -191,61 +225,24 @@
     return false;
   }
   const Recognizer = window.QuranRecitationRecognizer || class { async check() { return { available: false, matchedWordIndexes: [] }; } };
-  function showLiveTranscript(transcript, isFinal) {
-    const heard = normalize(transcript).split(" ").filter(Boolean);
-    if (!heard.length || !state) return;
-    let expectedIndex = 0;
-    for (const word of heard) {
-      if (word === state.expectedWords[expectedIndex]) expectedIndex++;
-      else break;
-    }
-    if (expectedIndex) {
-      const current = expectedIndex - 1;
-      if (hidden()) state.revealedWordCount = Math.max(state.revealedWordCount, expectedIndex);
-      state.activeWordIndex = current;
-      setFeedback(`✓ تم التقاط ${nf.format(expectedIndex)} كلمة مباشرة`);
-      renderMushaf();
-    } else if (isFinal) {
-      // Browser speech is a fast guide only. The recording is still checked by
-      // the Quran ASR service before the session records a real mistake.
-      state.wrongWordIndex = 0;
-      setFeedback("تحقّق من الكلمة الأولى — سيؤكدها التحقق الدقيق بعد التوقف.", true);
-      renderMushaf();
-    }
-  }
-  function stopLiveRecognition() {
-    liveRecognitionWanted = false;
-    if (!liveRecognition) return;
-    liveRecognition.onend = null;
-    try { liveRecognition.stop(); } catch {}
-    liveRecognition = null;
-  }
-  function beginLiveRecognition() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) return false;
-    stopLiveRecognition(); liveRecognitionWanted = true;
-    const recognition = new SpeechRecognition(); liveRecognition = recognition;
-    recognition.lang = "ar-SA"; recognition.continuous = true; recognition.interimResults = true; recognition.maxAlternatives = 1;
-    recognition.onresult = (event) => {
-      let transcript = "", final = false;
-      for (let index = event.resultIndex; index < event.results.length; index++) { transcript += ` ${event.results[index][0].transcript}`; final ||= event.results[index].isFinal; }
-      showLiveTranscript(transcript, final);
-    };
-    recognition.onend = () => { if (liveRecognitionWanted && recorder?.state === "recording") setTimeout(() => { try { recognition.start(); } catch {} }, 60); };
-    recognition.onerror = (event) => { if (event.error !== "no-speech" && debug) console.info("[Quran Memorization] live speech unavailable", event.error); };
-    try { recognition.start(); return true; } catch { liveRecognition = null; return false; }
-  }
-  function stopVad() { clearTimeout(silenceTimer); silenceTimer = null; stopLiveRecognition(); try { audioContext?.close(); } catch {} audioContext = null; analyser = null; speechStarted = false; }
+  function stopVad() { clearTimeout(silenceTimer); silenceTimer = null; try { audioContext?.close(); } catch {} audioContext = null; analyser = null; speechStarted = false; }
   function beginVad() {
     if (!microphoneStream || !window.AudioContext) return;
     audioContext = new AudioContext(); analyser = audioContext.createAnalyser(); analyser.fftSize = 512;
     audioContext.createMediaStreamSource(microphoneStream).connect(analyser); const samples = new Uint8Array(analyser.fftSize);
-    const poll = () => { if (recorder?.state !== "recording") return; analyser.getByteTimeDomainData(samples); const level = samples.reduce((total, value) => total + Math.abs(value - 128), 0) / samples.length; if (level > 5) { speechStarted = true; clearTimeout(silenceTimer); silenceTimer = null; } else if (speechStarted && !silenceTimer) silenceTimer = setTimeout(() => stopRecord(), 1450); requestAnimationFrame(poll); };
+    const poll = () => { if (!liveRecording && recorder?.state !== "recording") return; analyser.getByteTimeDomainData(samples); const level = samples.reduce((total, value) => total + Math.abs(value - 128), 0) / samples.length; if (level > 5) { speechStarted = true; clearTimeout(silenceTimer); silenceTimer = null; } else if (speechStarted && !silenceTimer) silenceTimer = setTimeout(() => stopRecord(), 1450); requestAnimationFrame(poll); };
     requestAnimationFrame(poll);
   }
   async function record() {
     if (state.phase !== S.WAIT_VISIBLE && state.phase !== S.WAIT_HIDDEN || !microphoneReady || !microphoneStream) return;
     if (hidden()) { state.revealedWordCount = 0; state.wrongWordIndex = null; render(); }
+    if (liveTurn?.ready) {
+      try {
+        liveRecording = true; state.phase = hidden() ? S.RECORD_HIDDEN : S.RECORD_VISIBLE;
+        await liveTurn.start(microphoneStream); beginVad(); stage("أقرأ الآن…");
+        return;
+      } catch (error) { liveRecording = false; console.error("[Quran Memorization] live audio start failed", error); setFeedback("تعذر بدء الاستماع المباشر. أعد المحاولة.", true); state.phase = hidden() ? S.WAIT_HIDDEN : S.WAIT_VISIBLE; return; }
+    }
     try {
       chunks = []; recorder = new MediaRecorder(microphoneStream);
       recorder.ondataavailable = (event) => chunks.push(event.data);
@@ -270,10 +267,10 @@
           stage("جاري الاستعداد...");
         }
       };
-      state.recordingStartedAt = performance.now(); recorder.start(); beginVad(); const hasLiveRecognition = beginLiveRecognition(); state.phase = hidden() ? S.RECORD_HIDDEN : S.RECORD_VISIBLE; render(); if (!hasLiveRecognition) setFeedback("التقاط الكلمات المباشر غير متاح في هذا المتصفح؛ سيجري التحقق فور توقفك.");
+      state.recordingStartedAt = performance.now(); recorder.start(); beginVad(); state.phase = hidden() ? S.RECORD_HIDDEN : S.RECORD_VISIBLE; render(); setFeedback("التحقق المباشر غير جاهز؛ سيُستخدم التحقق الاحتياطي لهذه المحاولة.");
     } catch { setFeedback("يلزم السماح باستخدام الميكروفون حتى يتم التحقق من التلاوة", true); }
   }
-  function stopRecord() { if (recorder?.state === "recording") recorder.stop(); }
+  function stopRecord() { if (liveRecording) { const wasHidden = hidden(); liveRecording = false; stopVad(); state.phase = wasHidden ? S.CHECK_HIDDEN : S.CHECK_VISIBLE; stage("تثبيت الكلمات…"); liveTurn?.end(); return; } if (recorder?.state === "recording") recorder.stop(); }
   function demoCorrect() { if (hidden()) { state.revealedWordCount = state.expectedWords.length; render(); } correct(); }
   function finish() { state.phase = S.COMPLETE; clearSession(); $("#memorizationStage").textContent = "ما شاء الله — أتممت الحفظ بنجاح"; $("#memorizationMushafStatus").textContent = "اكتملت جلسة التحفيظ."; render(); }
 

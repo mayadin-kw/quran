@@ -25,25 +25,37 @@
     host.replaceChildren(document.importNode(svg, true)); host.dataset.svgPage = String(page);
     return host.querySelector("svg");
   }
-  // A source page is a real physical Mushaf page: it is never cropped.  The
-  // surrounding verses remain visible as quiet context, while the requested
-  // range is the only part that may be hidden or highlighted during practice.
+  // The source SVG retains canonical word geometry, while this function makes
+  // a readable active-region presentation inside the application's Mushaf shell.
   function filterPageContent(host, { surah, from, to }) {
     const svg = host.querySelector("svg"); if (!svg) return;
     const wanted = (node) => Number(node.dataset.surah) === Number(surah) && Number(node.dataset.aya) >= Number(from) && Number(node.dataset.aya) <= Number(to);
-    svg.querySelectorAll('g[id^="md-line-"]').forEach((node) => {
-      const containsTarget = [...node.querySelectorAll('[data-surah][data-aya]')].some(wanted);
-      node.style.visibility = "visible";
-      node.classList.toggle("mem-page-context", !containsTarget);
-      node.classList.toggle("mem-page-target", containsTarget);
+    const lines = [...svg.querySelectorAll('g[id^="md-line-"]')];
+    const contextual = new Set();
+    lines.forEach((line, index) => {
+      const hasTarget = [...line.querySelectorAll('[data-surah][data-aya]')].some(wanted);
+      if (hasTarget) return;
+      const nextVerseLine = lines.slice(index + 1).find((next) => next.querySelector('[data-surah][data-aya]'));
+      if (nextVerseLine && [...nextVerseLine.querySelectorAll('[data-surah][data-aya]')].some(wanted) && (line.dataset.type === "surah-name" || line.dataset.type === "bismillah")) contextual.add(line);
     });
-    svg.querySelectorAll('[data-surah][data-aya]').forEach((node) => {
-      node.style.visibility = "visible";
-      node.classList.toggle("mem-page-context", !wanted(node));
-      node.classList.toggle("mem-page-target", wanted(node));
+    lines.forEach((line) => {
+      const hasTarget = [...line.querySelectorAll('[data-surah][data-aya]')].some(wanted);
+      line.style.visibility = hasTarget || contextual.has(line) ? "visible" : "hidden";
+      line.classList.remove("mem-page-context", "mem-page-target");
     });
+    svg.querySelectorAll('[data-surah][data-aya]').forEach((node) => { node.style.visibility = wanted(node) ? "visible" : "hidden"; });
     const original = svg.dataset.originalViewBox || svg.getAttribute("viewBox");
-    svg.dataset.originalViewBox = original; svg.setAttribute("viewBox", original);
+    svg.dataset.originalViewBox = original;
+    const visible = [
+      ...svg.querySelectorAll('[data-surah][data-aya]'),
+      ...contextual,
+    ].filter((node) => node.style.visibility !== "hidden");
+    const boxes = visible.map((node) => { try { return node.getBBox(); } catch { return null; } }).filter((box) => box && box.width && box.height);
+    if (!boxes.length) { svg.setAttribute("viewBox", original); return; }
+    const left = Math.min(...boxes.map((box) => box.x)), top = Math.min(...boxes.map((box) => box.y));
+    const right = Math.max(...boxes.map((box) => box.x + box.width)), bottom = Math.max(...boxes.map((box) => box.y + box.height));
+    const padX = Math.max(18, (right - left) * .17), padY = Math.max(22, (bottom - top) * .35);
+    svg.setAttribute("viewBox", `${left - padX} ${top - padY} ${right - left + padX * 2} ${bottom - top + padY * 2}`);
   }
   function allWords(host) { return [...host.querySelectorAll('g[id^="md-word-"][data-type="text"]')]; }
   function targetWords(host, targets) { return targets.flatMap((target) => [...host.querySelectorAll(selectorFor(target))]); }
