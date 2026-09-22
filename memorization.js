@@ -108,7 +108,7 @@
     state.expectedText = targetText(); state.expectedWords = normalize(state.expectedText).split(" ").filter(Boolean);
     state.segmentStartWord = targetKind === "unit" ? current.startWord : 0;
     state.segmentEndWord = targetKind === "unit" ? current.endWord : Math.max(0, state.expectedWords.length - 1);
-    state.revealedWordCount = 0; state.wrongWordIndex = null; state.activeWordIndex = null;
+    state.revealedWordCount = 0; state.wrongWordIndex = null; state.activeWordIndex = null; state.verificationMode = "live_streaming";
     if (targetKind !== "cross-link") { state.currentAudioVerseKey = state.currentVerseKey; audio.src = app.audioUrlFor(settings.reciter, state.currentVerseKey); }
     assertAudio(); log("setCurrentTarget");
   }
@@ -139,8 +139,8 @@
       error: (error) => {
         if (turn !== liveTurn) return;
         console.error("[Quran Memorization Live ASR]", error);
-        liveRecording = false; setFeedback("تعذر الاتصال بالتحقق المباشر. ستُعاد المحاولة بأمان.", true);
-        if (/^RECORD/.test(state?.phase || "")) { state.phase = hidden() ? S.WAIT_HIDDEN : S.WAIT_VISIBLE; stage("جاهز للتلاوة"); }
+        liveRecording = false; setFeedback("تعذر الاتصال بالتحقق المباشر. جارٍ إعادة الاتصال…", true);
+        if (/^RECORD/.test(state?.phase || "")) { state.phase = hidden() ? S.WAIT_HIDDEN : S.WAIT_VISIBLE; stage("جاري إعادة الاتصال…"); setTimeout(() => { prepareLiveTurn().then(() => record()); }, 700); }
       },
     });
     try { await turn.prepare(); } catch (error) { if (turn === liveTurn) { console.info("[Quran Memorization] live ASR preparation failed", error.message); closeLiveTurn(); } }
@@ -154,7 +154,10 @@
     try {
       await wordsView.loadPage(host, state.currentPage);
       if (token !== state.svgRenderToken) return;
-      wordsView.filterPageContent(host, { surah: settings.surah, from: settings.from, to: settings.to });
+      // The Mushaf shell presents the current memorization ayah, not every
+      // future ayah in the selected range. Linking still controls its own
+      // active words through svgTargets().
+      wordsView.filterPageContent(host, { surah: settings.surah, from: ayah().ayah, to: ayah().ayah });
       const targets = svgTargets();
       const selected = wordsView.targetWords(host, targets);
       if (!selected.length) throw new Error(`Missing SVG words for ${state.currentVerseKey}`);
@@ -230,18 +233,23 @@
     if (!microphoneStream || !window.AudioContext) return;
     audioContext = new AudioContext(); analyser = audioContext.createAnalyser(); analyser.fftSize = 512;
     audioContext.createMediaStreamSource(microphoneStream).connect(analyser); const samples = new Uint8Array(analyser.fftSize);
-    const poll = () => { if (!liveRecording && recorder?.state !== "recording") return; analyser.getByteTimeDomainData(samples); const level = samples.reduce((total, value) => total + Math.abs(value - 128), 0) / samples.length; if (level > 5) { speechStarted = true; clearTimeout(silenceTimer); silenceTimer = null; } else if (speechStarted && !silenceTimer) silenceTimer = setTimeout(() => stopRecord(), 1450); requestAnimationFrame(poll); };
+    const poll = () => { if (!liveRecording && recorder?.state !== "recording") return; analyser.getByteTimeDomainData(samples); const level = samples.reduce((total, value) => total + Math.abs(value - 128), 0) / samples.length; if (level > 5) { speechStarted = true; clearTimeout(silenceTimer); silenceTimer = null; } else if (!liveRecording && speechStarted && !silenceTimer) silenceTimer = setTimeout(() => stopRecord(), 1450); requestAnimationFrame(poll); };
     requestAnimationFrame(poll);
   }
   async function record() {
     if (state.phase !== S.WAIT_VISIBLE && state.phase !== S.WAIT_HIDDEN || !microphoneReady || !microphoneStream) return;
     if (hidden()) { state.revealedWordCount = 0; state.wrongWordIndex = null; render(); }
-    if (liveTurn?.ready) {
+    if (state.verificationMode === "live_streaming") {
+      if (!liveTurn?.ready) {
+        if (!liveTurn) prepareLiveTurn();
+        setFeedback("جارٍ تجهيز الاستماع المباشر…"); state.phase = hidden() ? S.WAIT_HIDDEN : S.WAIT_VISIBLE;
+        setTimeout(record, 450); return;
+      }
       try {
         liveRecording = true; state.phase = hidden() ? S.RECORD_HIDDEN : S.RECORD_VISIBLE;
-        await liveTurn.start(microphoneStream); beginVad(); stage("أقرأ الآن…");
+        await liveTurn.start(microphoneStream); beginVad(); stage("🎙 جاري الاستماع…");
         return;
-      } catch (error) { liveRecording = false; console.error("[Quran Memorization] live audio start failed", error); setFeedback("تعذر بدء الاستماع المباشر. أعد المحاولة.", true); state.phase = hidden() ? S.WAIT_HIDDEN : S.WAIT_VISIBLE; return; }
+      } catch (error) { liveRecording = false; console.error("[Quran Memorization] live audio start failed", error); setFeedback("تعذر بدء الاستماع المباشر. جارٍ إعادة الاتصال…", true); state.phase = hidden() ? S.WAIT_HIDDEN : S.WAIT_VISIBLE; setTimeout(() => { prepareLiveTurn().then(() => record()); }, 700); return; }
     }
     try {
       chunks = []; recorder = new MediaRecorder(microphoneStream);
