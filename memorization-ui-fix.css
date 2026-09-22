@@ -26,6 +26,11 @@
 #memorizationSession .memorization-mushaf::before{content:"";position:absolute;inset:19px;border:2px double #cdb779;border-radius:7px;pointer-events:none;opacity:.9}
 #memorizationSession .memorization-mushaf svg{position:relative;z-index:1;width:auto;height:100%;max-width:100%;max-height:100%;preserveAspectRatio:xMidYMid meet}
 #memorizationSession .memorization-mushaf .mem-word-visible{opacity:1!important}
+#memorizationSession .memorization-mushaf .mem-word-future{opacity:.24!important}
+#memorizationSession .memorization-mushaf .mem-word-mastered{opacity:.48!important}
+#memorizationSession .memorization-mushaf .mem-word-hidden{opacity:0!important}
+#memorizationSession .memorization-mushaf .mem-word-confirmed{opacity:1!important}
+#memorizationSession .memorization-mushaf .mem-word-confirmed path{fill:#2075bb!important}
 #memorizationSession .memorization-debug{max-height:19dvh;overflow:auto;box-sizing:border-box;margin:0;padding:9px;border:1px dashed #c8a964;border-radius:9px;background:#fff9e9;color:#314d43;direction:ltr;text-align:left;white-space:pre-wrap;word-break:break-word;font:10px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;user-select:text}
 
 /* iOS-style microphone switch: off is neutral, on is clearly green. */

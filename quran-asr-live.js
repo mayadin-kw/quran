@@ -2,6 +2,8 @@
 (() => {
   const debug = (event, detail = {}) => {
     window.QuranLiveDebug = { event, ...detail, at: new Date().toISOString() };
+    (window.QuranLiveTrace ||= []).push(window.QuranLiveDebug);
+    if (window.QuranLiveTrace.length > 300) window.QuranLiveTrace.shift();
     console.info("[Quran Live ASR]", window.QuranLiveDebug);
   };
   const authToken = async () => Promise.race([
@@ -36,18 +38,19 @@
       });
     }
     handle(message) {
-      debug(message.type, { verseKey: message.verseKey, wordIndex: message.wordIndex, latencyMs: message.latencyMs });
+      debug(message.type, { verseKey: message.verseKey, wordIndex: message.wordIndex, wordIndexInAyah: message.wordIndexInAyah, transcript: message.transcript, normalizedTranscript: message.normalizedTranscript, alignmentStatus: message.alignmentStatus, decoderUsed: message.decoderUsed, encodedFrameCount: message.encodedFrameCount, committedWordCount: message.committedWordCount, latencyMs: message.latencyMs });
       if (message.type === "server_error") this.handlers.error?.(message); else this.handlers.event?.(message);
     }
     async start(stream) {
       if (!this.ready || this.started) return;
       this.audioContext = new AudioContext();
       await this.audioContext.audioWorklet.addModule("live-audio-processor.js");
+      debug("microphone_stream", { active: stream.active, audioTrackCount: stream.getAudioTracks().length });
       this.source = this.audioContext.createMediaStreamSource(stream);
       this.worklet = new AudioWorkletNode(this.audioContext, "quran-live-pcm");
       this.worklet.port.onmessage = ({ data }) => { if (this.socket?.readyState === WebSocket.OPEN && this.started) { this.socket.send(data); this.framesSent++; this.bytesSent += data.byteLength; if (this.framesSent === 1 || this.framesSent % 20 === 0) debug("pcm_frames_sent", { frames: this.framesSent, bytes: this.bytesSent }); } };
       this.source.connect(this.worklet); this.worklet.connect(this.audioContext.destination);
-      await this.audioContext.resume(); this.started = true; debug("audio_worklet_started", { sampleRate: this.audioContext.sampleRate });
+      await this.audioContext.resume(); this.started = true; debug("audio_worklet_started", { sampleRate: this.audioContext.sampleRate, state: this.audioContext.state, websocketState: this.socket?.readyState });
     }
     async end() {
       if (this.closed) return;

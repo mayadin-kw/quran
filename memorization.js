@@ -11,7 +11,7 @@
   let settings = { surah: 1, from: 1, to: 7, reciter: "" };
   let state, recorder, microphoneStream, chunks = [], restoreOffered = false, audioContext, analyser, silenceTimer, speechStarted = false, microphoneReady = false, liveTurn = null, liveRecording = false;
   const nf = new Intl.NumberFormat("ar-EG");
-  const normalize = (text) => text.normalize("NFD").replace(/[\u064B-\u065F\u0670\u06D6-\u06EDـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/[^\u0621-\u064Aa-zA-Z\s]/g, " ").replace(/\s+/g, " ").trim();
+  const normalize = (text) => String(text || "").normalize("NFKD").replace(/\p{M}/gu, "").replace(/[\u064B-\u065F\u0670\u06D6-\u06EDـ]/g, "").replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/[^\u0621-\u064A\s]/g, " ").replace(/\s+/g, " ").trim();
   const verseKey = (ayah) => `${settings.surah}:${ayah}`;
   // A timing provider deliberately accepts only real alignment metadata. It
   // never derives word timing by splitting an ayah duration into equal parts.
@@ -73,6 +73,14 @@
     if (state.targetKind === "internal-link") return ayah().segments.slice(0, state.segmentIndex + 1).map((item) => item.text).join(" ");
     return unit().text;
   }
+  function expectedWordRefs() {
+    const selected = state.targetKind === "cross-link"
+      ? state.units.slice(0, state.ayahIndex + 1).flatMap((item) => item.text.split(/\s+/).filter(Boolean).map((_, wordIndex) => ({ verseKey: item.verseKey, wordIndex })))
+      : state.targetKind === "internal-link"
+        ? wordRange(0, unit().endWord).map((wordIndex) => ({ verseKey: state.currentVerseKey, wordIndex }))
+        : wordRange(unit().startWord, unit().endWord).map((wordIndex) => ({ verseKey: state.currentVerseKey, wordIndex }));
+    return selected;
+  }
   // Word metadata is always referenced by (surah, ayah, zero-based wordIndex).
   // A cross-page link displays its portion on the current page, then transitions
   // when the state advances to the next verse/page; it never shrinks two pages.
@@ -108,12 +116,13 @@
     state.expectedText = targetText(); state.expectedWords = normalize(state.expectedText).split(" ").filter(Boolean);
     state.segmentStartWord = targetKind === "unit" ? current.startWord : 0;
     state.segmentEndWord = targetKind === "unit" ? current.endWord : Math.max(0, state.expectedWords.length - 1);
-    state.revealedWordCount = 0; state.wrongWordIndex = null; state.activeWordIndex = null; state.verificationMode = "live_streaming";
+    state.expectedWordRefs = expectedWordRefs();
+    state.revealedWordCount = 0; state.wrongWordIndex = null; state.activeWordIndex = null; state.confirmedWords = []; state.verificationMode = "live_streaming";
     if (targetKind !== "cross-link") { state.currentAudioVerseKey = state.currentVerseKey; audio.src = app.audioUrlFor(settings.reciter, state.currentVerseKey); }
     assertAudio(); log("setCurrentTarget");
   }
   function closeLiveTurn() { liveTurn?.close(); liveTurn = null; liveRecording = false; }
-  function liveContext() { const [surah, ayahNumber] = state.currentVerseKey.split(":").map(Number); return { surah, ayah: ayahNumber, verseKey: state.currentVerseKey, segmentStartWord: state.segmentStartWord, segmentEndWord: state.segmentEndWord, expectedWords: state.expectedWords }; }
+  function liveContext() { const [surah, ayahNumber] = state.currentVerseKey.split(":").map(Number); return { surah, ayah: ayahNumber, verseKey: state.currentVerseKey, segmentStartWord: state.segmentStartWord, segmentEndWord: state.segmentEndWord, expectedWords: state.expectedWords, expectedWordRefs: state.expectedWordRefs }; }
   async function prepareLiveTurn() {
     closeLiveTurn();
     if (!window.QuranLiveRecitation) return;
@@ -124,16 +133,24 @@
         if (event.type === "speech_started") { setFeedback("جاري الاستماع…"); return; }
         if (event.type === "word_committed") {
           const index = Number(event.wordIndex);
-          state.activeWordIndex = index;
+          const identity = state.expectedWordRefs[index];
+          if (!identity || identity.verseKey !== event.verseKey || identity.wordIndex !== Number(event.wordIndexInAyah)) { console.error("[Quran Memorization] invalid canonical word identity", event); return; }
+          state.confirmedWords = state.confirmedWords || [];
+          if (!state.confirmedWords.some((word) => word.verseKey === identity.verseKey && word.wordIndex === identity.wordIndex)) state.confirmedWords.push(identity);
+          state.wrongWordIndex = null;
+          const svgWord = wordsView.wordFor($("#memorizationMushaf"), identity);
+          console.info("[Quran Memorization Live ASR] canonical_word", { verseKey: identity.verseKey, wordIndexInAyah: identity.wordIndex, svgFound: !!svgWord, completedExpectedWordCount: state.confirmedWords.length });
           if (hidden()) state.revealedWordCount = Math.max(state.revealedWordCount, index + 1);
-          setFeedback("✓ تم تأكيد كلمة"); render(); return;
+          // A confirmed word is visualized inside the Mushaf; do not replace
+          // the continuous-listening state with a batch-verification message.
+          setFeedback("🎙 جاري الاستماع إليك الآن"); render(); return;
         }
-        if (event.type === "word_wrong" || event.type === "word_missing") { wrong(Number(event.wordIndex)); return; }
+        if (event.type === "word_wrong" || event.type === "word_missing") { state.wrongWordIndex = Number(event.wordIndex); render(); return; }
         if (event.type === "verification_complete") {
           liveRecording = false;
-          if (event.complete) correct();
-          else if (![S.SETUP, S.TEACHER_VISIBLE, S.TEACHER_HIDDEN].includes(state.phase)) { setFeedback("لم تكتمل التلاوة. أعد المحاولة.", true); state.phase = hidden() ? S.WAIT_HIDDEN : S.WAIT_VISIBLE; stage("جاهز للتلاوة"); }
           closeLiveTurn();
+          if (event.complete && state.confirmedWords?.length === state.expectedWordRefs.length) { console.info("[Quran Memorization Live ASR] repetition_complete", { completedExpectedWordCount: state.confirmedWords.length }); correct(); }
+          else if (![S.SETUP, S.TEACHER_VISIBLE, S.TEACHER_HIDDEN].includes(state.phase)) { setFeedback("لم تكتمل التلاوة. أعد المحاولة.", true); state.phase = hidden() ? S.WAIT_HIDDEN : S.WAIT_VISIBLE; stage("جاهز للتلاوة"); setTimeout(() => { prepareLiveTurn().then(() => record()); }, 700); }
         }
       },
       error: (error) => {
@@ -154,15 +171,13 @@
     try {
       await wordsView.loadPage(host, state.currentPage);
       if (token !== state.svgRenderToken) return;
-      // The Mushaf shell presents the current memorization ayah, not every
-      // future ayah in the selected range. Linking still controls its own
-      // active words through svgTargets().
-      wordsView.filterPageContent(host, { surah: settings.surah, from: ayah().ayah, to: ayah().ayah });
+      const pageAyahs = state.units.filter((item) => item.page === state.currentPage).map((item) => item.ayah);
+      wordsView.filterPageContent(host, { surah: settings.surah, from: Math.min(...pageAyahs), to: Math.max(...pageAyahs) });
       const targets = svgTargets();
       const selected = wordsView.targetWords(host, targets);
       if (!selected.length) throw new Error(`Missing SVG words for ${state.currentVerseKey}`);
       const visible = hidden() ? state.revealedWordCount : selected.length;
-      wordsView.renderWords(host, targets, { revealCount: visible, wrongIndex: state.wrongWordIndex, activeIndex: state.activeWordIndex });
+      wordsView.renderWords(host, targets, { revealCount: visible, wrongIndex: state.wrongWordIndex, activeIndex: state.activeWordIndex, confirmed: state.confirmedWords || [], hidden: hidden(), currentAyah: ayah().ayah, masteredAyahs: state.masteredAyahs, selectedFrom: settings.from, selectedTo: settings.to, surah: settings.surah });
       status.textContent = `صفحة المصحف ${nf.format(state.currentPage)} — ${state.currentVerseKey}`;
     } catch (error) {
       status.textContent = `تعذر تحميل كلمات المصحف: ${error.message}`;
@@ -176,7 +191,7 @@
     renderRepetition();
     const mic = $("#memorizationMic"), waiting = state.phase === S.WAIT_VISIBLE || state.phase === S.WAIT_HIDDEN;
     mic.classList.toggle("recording", /^RECORD/.test(state.phase));
-    $("#memorizationMicHint").textContent = /^TEACHER/.test(state.phase) ? "استمع إلى القارئ" : /^RECORD/.test(state.phase) ? "🎙 استمع إليك الآن" : /^CHECK/.test(state.phase) ? "جاري التحقق..." : waiting ? "جاري الاستعداد..." : state.phase === S.COMPLETE ? "أحسنت" : "";
+    $("#memorizationMicHint").textContent = /^TEACHER/.test(state.phase) ? "استمع إلى القارئ" : /^RECORD/.test(state.phase) ? "🎙 جاري الاستماع إليك الآن" : /^CHECK/.test(state.phase) ? "جاري الانتقال للمرحلة التالية…" : waiting ? "جاري الاستعداد..." : state.phase === S.COMPLETE ? "أحسنت" : "";
     renderMushaf(); log("render");
   }
   function save() { try { localStorage.setItem(activeKey, "true"); localStorage.setItem(storeKey, JSON.stringify({ schema: 4, settings, state })); } catch {} }
@@ -184,7 +199,7 @@
   function stage(label) { $("#memorizationStage").textContent = label; render(); save(); }
 
   function playTeacher() {
-    state.wrongWordIndex = null; state.revealedWordCount = 0;
+    state.wrongWordIndex = null; state.revealedWordCount = 0; state.confirmedWords = [];
     stage(hidden() ? "استمع غيباً" : link() ? "ربط المحفوظ" : "استمع إلى القارئ");
     const keys = audioKeys(); let index = 0;
     prepareLiveTurn();
@@ -204,8 +219,8 @@
     if (link()) state.link++; else if (wasHidden) state.hiddenCount++; else state.visibleCount++;
     state.phase = wasHidden ? S.CHECK_HIDDEN : S.CHECK_VISIBLE; setFeedback("✓ أحسنت"); render(); save();
     setTimeout(() => {
-      if (link()) { if (state.link < 3) { if (wasHidden) { state.revealedWordCount = 0; state.phase = S.WAIT_HIDDEN; stage("أحسنت — أكمل من الذاكرة"); } else { state.phase = S.TEACHER_VISIBLE; playTeacher(); } } else afterLink(); }
-      else if (wasHidden) { if (state.hiddenCount < 5) { state.revealedWordCount = 0; state.phase = S.WAIT_HIDDEN; stage("أحسنت — أكمل من الذاكرة"); } else afterUnit(); }
+      if (link()) { if (state.link < 3) { if (wasHidden) { state.revealedWordCount = 0; state.phase = S.WAIT_HIDDEN; stage("أحسنت — أكمل من الذاكرة"); prepareLiveTurn().then(() => record()); } else { state.phase = S.TEACHER_VISIBLE; playTeacher(); } } else afterLink(); }
+      else if (wasHidden) { if (state.hiddenCount < 5) { state.revealedWordCount = 0; state.phase = S.WAIT_HIDDEN; stage("أحسنت — أكمل من الذاكرة"); prepareLiveTurn().then(() => record()); } else afterUnit(); }
       else if (state.visibleCount < 5) { state.phase = S.TEACHER_VISIBLE; playTeacher(); }
       else { state.hiddenCount = 0; setCurrentTarget({ targetKind: "unit", hidden: true }); state.phase = S.TEACHER_HIDDEN; playTeacher(); }
     }, 560);
@@ -238,7 +253,9 @@
   }
   async function record() {
     if (state.phase !== S.WAIT_VISIBLE && state.phase !== S.WAIT_HIDDEN || !microphoneReady || !microphoneStream) return;
-    if (hidden()) { state.revealedWordCount = 0; state.wrongWordIndex = null; render(); }
+    state.confirmedWords = []; state.activeWordIndex = null; state.wrongWordIndex = null;
+    if (hidden()) state.revealedWordCount = 0;
+    render();
     if (state.verificationMode === "live_streaming") {
       if (!liveTurn?.ready) {
         if (!liveTurn) prepareLiveTurn();
@@ -247,7 +264,9 @@
       }
       try {
         liveRecording = true; state.phase = hidden() ? S.RECORD_HIDDEN : S.RECORD_VISIBLE;
-        await liveTurn.start(microphoneStream); beginVad(); stage("🎙 جاري الاستماع…");
+        // The worklet owns one continuous microphone stream. VAD is not used
+        // here: a pause between Quran words must never end the learner turn.
+        await liveTurn.start(microphoneStream); stage("🎙 جاري الاستماع إليك الآن");
         return;
       } catch (error) { liveRecording = false; console.error("[Quran Memorization] live audio start failed", error); setFeedback("تعذر بدء الاستماع المباشر. جارٍ إعادة الاتصال…", true); state.phase = hidden() ? S.WAIT_HIDDEN : S.WAIT_VISIBLE; setTimeout(() => { prepareLiveTurn().then(() => record()); }, 700); return; }
     }

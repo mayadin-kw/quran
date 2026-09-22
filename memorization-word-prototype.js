@@ -4,9 +4,21 @@
   const cache = new Map();
   const baseUrl = "https://raw.githubusercontent.com/mushafdatabase/MushafDatabase-Ligature-Based-SVG/main/SVG%20V1.01";
   const pad = (number) => String(number).padStart(3, "0");
-  const selectorFor = ({ surah, ayah, wordIndexes }) => {
+  const normalize = (text) => String(text || "").normalize("NFKD").replace(/\p{M}/gu, "").replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/[^ء-ي]/g, "");
+  const verseParts = (host, surah, ayah) => {
     const root = `g[id^="md-word-"][data-surah="${pad(surah)}"][data-aya="${pad(ayah)}"][data-type="text"]`;
-    return wordIndexes?.length ? wordIndexes.map((index) => `${root}[data-word-index-in-ayah="${index + 1}"]`).join(",") : root;
+    const svgParts = [...host.querySelectorAll(root)];
+    const canonical = (window.QuranAppData?.getVerseText(`${surah}:${ayah}`) || "").split(/\s+/).filter(Boolean);
+    const grouped = []; let cursor = 0;
+    for (const word of canonical) {
+      const target = normalize(word), parts = []; let combined = "";
+      while (cursor < svgParts.length && combined.length < target.length) {
+        const part = svgParts[cursor++]; parts.push(part); combined += normalize(part.dataset.imlaey || part.dataset.hafs);
+      }
+      if (combined !== target) { console.warn("[Quran Memorization Words] SVG/text mismatch", { surah, ayah, word, combined }); return svgParts.map((part) => [part]); }
+      grouped.push(parts);
+    }
+    return cursor === svgParts.length ? grouped : svgParts.map((part) => [part]);
   };
 
   async function getSvgMarkup(page) {
@@ -58,18 +70,33 @@
     svg.setAttribute("viewBox", `${left - padX} ${top - padY} ${right - left + padX * 2} ${bottom - top + padY * 2}`);
   }
   function allWords(host) { return [...host.querySelectorAll('g[id^="md-word-"][data-type="text"]')]; }
-  function targetWords(host, targets) { return targets.flatMap((target) => [...host.querySelectorAll(selectorFor(target))]); }
-  function renderWords(host, targets, { revealCount = 0, wrongIndex = null, activeIndex = null } = {}) {
+  function targetWords(host, targets) { return targets.flatMap((target) => { const groups = verseParts(host, target.surah, target.ayah); return target.wordIndexes?.length ? target.wordIndexes.map((index) => groups[index]).filter((parts) => parts?.length) : groups; }); }
+  function wordPartsFor(host, { verseKey, wordIndex }) { const [surah, ayah] = String(verseKey).split(":").map(Number); return verseParts(host, surah, ayah)[Number(wordIndex)] || []; }
+  function wordFor(host, { verseKey, wordIndex }) {
+    return wordPartsFor(host, { verseKey, wordIndex })[0] || null;
+  }
+  function renderWords(host, targets, { revealCount = 0, wrongIndex = null, activeIndex = null, confirmed = [], hidden = false, currentAyah, masteredAyahs = [], selectedFrom, selectedTo, surah } = {}) {
     const svg = host.querySelector("svg"); svg?.querySelector("#memorizationWrongWordLayer")?.remove();
-    const words = allWords(host); words.forEach((word) => word.classList.remove("mem-word-visible", "mem-word-hidden", "mem-word-wrong", "mem-word-active"));
+    const words = allWords(host); words.forEach((word) => {
+      word.classList.remove("mem-word-visible", "mem-word-hidden", "mem-word-wrong", "mem-word-active", "mem-word-future", "mem-word-mastered", "mem-word-confirmed");
+      if (Number(word.dataset.surah) !== Number(surah)) return;
+      const ayah = Number(word.dataset.aya);
+      if (ayah < selectedFrom || ayah > selectedTo) return;
+      if (ayah > currentAyah) word.classList.add("mem-word-future");
+      else if (ayah < currentAyah || masteredAyahs.includes(ayah)) word.classList.add("mem-word-mastered");
+    });
     const selected = targetWords(host, targets);
-    selected.slice(0, revealCount).forEach((word) => { word.classList.remove("mem-word-hidden"); word.classList.add("mem-word-visible"); });
-    if (activeIndex !== null && selected[activeIndex]) { selected[activeIndex].classList.remove("mem-word-hidden"); selected[activeIndex].classList.add("mem-word-visible", "mem-word-active"); }
+    if (hidden) selected.flat().forEach((word) => word.classList.add("mem-word-hidden"));
+    selected.slice(0, revealCount).flat().forEach((word) => { word.classList.remove("mem-word-hidden"); word.classList.add("mem-word-visible"); });
+    confirmed.forEach((identity) => wordPartsFor(host, identity).forEach((word) => { word.classList.remove("mem-word-hidden"); word.classList.add("mem-word-visible", "mem-word-confirmed"); }));
+    if (activeIndex !== null && selected[activeIndex]) selected[activeIndex].forEach((word) => { word.classList.remove("mem-word-hidden"); word.classList.add("mem-word-visible", "mem-word-active"); });
     if (wrongIndex !== null && selected[wrongIndex] && svg) {
       // A wrong answer in hidden mode marks the real word geometry without
       // rendering the answer itself.
-      const box = selected[wrongIndex].getBBox(), layer = document.createElementNS("http://www.w3.org/2000/svg", "g"), rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-      selected[wrongIndex].classList.add("mem-word-wrong"); layer.id = "memorizationWrongWordLayer";
+      const boxes = selected[wrongIndex].map((word) => word.getBBox()), left = Math.min(...boxes.map((box) => box.x)), top = Math.min(...boxes.map((box) => box.y));
+      const box = { x: left, y: top, width: Math.max(...boxes.map((item) => item.x + item.width)) - left, height: Math.max(...boxes.map((item) => item.y + item.height)) - top };
+      const layer = document.createElementNS("http://www.w3.org/2000/svg", "g"), rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      selected[wrongIndex].forEach((word) => word.classList.add("mem-word-wrong")); layer.id = "memorizationWrongWordLayer";
       rect.setAttribute("x", box.x); rect.setAttribute("y", box.y); rect.setAttribute("width", box.width); rect.setAttribute("height", box.height); rect.setAttribute("rx", "1.5"); rect.setAttribute("class", "mem-word-wrong-box"); layer.append(rect); svg.append(layer);
     }
     debugWords(host, selected); return selected;
@@ -77,11 +104,11 @@
   function debugWords(host, selected) {
     const svg = host.querySelector("svg"); if (!svg) return; svg.querySelector("#memorizationWordDebug")?.remove(); if (!debug) return;
     const layer = document.createElementNS("http://www.w3.org/2000/svg", "g"); layer.id = "memorizationWordDebug";
-    selected.forEach((word) => { const box = word.getBBox(), label = document.createElementNS("http://www.w3.org/2000/svg", "text"), outline = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    selected.flat().forEach((word) => { const box = word.getBBox(), label = document.createElementNS("http://www.w3.org/2000/svg", "text"), outline = document.createElementNS("http://www.w3.org/2000/svg", "rect");
       label.setAttribute("x", box.x); label.setAttribute("y", Math.max(8, box.y - 1)); label.setAttribute("class", "mem-word-debug-label"); label.textContent = `${Number(word.dataset.surah)}:${Number(word.dataset.aya)}:${word.dataset.wordIndexInAyah}`;
       outline.setAttribute("x", box.x); outline.setAttribute("y", box.y); outline.setAttribute("width", box.width); outline.setAttribute("height", box.height); outline.setAttribute("class", "mem-word-debug-bound"); layer.append(outline, label);
       console.info("[Quran Memorization Words]", { page: Number(host.dataset.svgPage), verseKey: `${Number(word.dataset.surah)}:${Number(word.dataset.aya)}`, wordIndex: Number(word.dataset.wordIndexInAyah), state: word.classList.contains("mem-word-wrong") ? "wrong" : word.classList.contains("mem-word-hidden") ? "hidden" : "visible", geometry: box });
     }); svg.append(layer);
   }
-  window.MemorizationSvgWords = { loadPage, filterPageContent, renderWords, targetWords };
+  window.MemorizationSvgWords = { loadPage, filterPageContent, renderWords, targetWords, wordFor };
 })();
