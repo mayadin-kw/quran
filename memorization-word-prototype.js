@@ -2,23 +2,12 @@
   const $ = (selector) => document.querySelector(selector);
   const debug = new URLSearchParams(location.search).get("debugMemorizationWords") === "true";
   const cache = new Map();
-  const baseUrl = "https://raw.githubusercontent.com/mushafdatabase/MushafDatabase-Ligature-Based-SVG/main/SVG%20V1.01";
+  const baseUrl = "https://raw.githubusercontent.com/mushafdatabase/MushafDatabase-Ligature-Based-SVG/ae5786ab08597f8123575dec4e774f1eca195e0f/SVG%20V1.01";
   const pad = (number) => String(number).padStart(3, "0");
-  const normalize = (text) => String(text || "").normalize("NFKD").replace(/\p{M}/gu, "").replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/[^ء-ي]/g, "");
   const verseParts = (host, surah, ayah) => {
-    const root = `g[id^="md-word-"][data-surah="${pad(surah)}"][data-aya="${pad(ayah)}"][data-type="text"]`;
-    const svgParts = [...host.querySelectorAll(root)];
-    const canonical = (window.QuranAppData?.getVerseText(`${surah}:${ayah}`) || "").split(/\s+/).filter(Boolean);
-    const grouped = []; let cursor = 0;
-    for (const word of canonical) {
-      const target = normalize(word), parts = []; let combined = "";
-      while (cursor < svgParts.length && combined.length < target.length) {
-        const part = svgParts[cursor++]; parts.push(part); combined += normalize(part.dataset.imlaey || part.dataset.hafs);
-      }
-      if (combined !== target) { console.warn("[Quran Memorization Words] SVG/text mismatch", { surah, ayah, word, combined }); return svgParts.map((part) => [part]); }
-      grouped.push(parts);
-    }
-    return cursor === svgParts.length ? grouped : svgParts.map((part) => [part]);
+    const verse = window.QuranMemorizationIndex?.verses[`${surah}:${ayah}`];
+    if (!verse || Number(host.dataset.svgPage) !== verse.page) return [];
+    return verse.words.map((word) => word.svg.map((part) => host.querySelector(`g[id="${part.id}"][data-surah="${pad(surah)}"][data-aya="${pad(ayah)}"]`)).filter(Boolean));
   };
 
   async function getSvgMarkup(page) {

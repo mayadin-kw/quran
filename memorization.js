@@ -3,6 +3,10 @@
   const app = window.QuranAppData;
   const wordsView = window.MemorizationSvgWords;
   if (!app || !wordsView) return;
+  let recognitionIndex = null;
+  const recognitionIndexReady = fetch("quran-recognition-index.json?v=20260923-quran-wide-1")
+    .then((response) => { if (!response.ok) throw new Error(`Quran index HTTP ${response.status}`); return response.json(); })
+    .then((data) => { if (data.report?.ayahs !== 6236 || data.report?.unmappedWords !== 0) throw new Error("Quran index is incomplete"); recognitionIndex = data; window.QuranMemorizationIndex = data; return data; });
 
   const audio = $("#memorizationAudio");
   const storeKey = "quran.memorization.active.v4", activeKey = "quran.memorization.session-active";
@@ -11,7 +15,6 @@
   let settings = { surah: 1, from: 1, to: 7, reciter: "" };
   let state, recorder, microphoneStream, chunks = [], restoreOffered = false, audioContext, analyser, silenceTimer, speechStarted = false, microphoneReady = false, liveTurn = null, liveRecording = false;
   const nf = new Intl.NumberFormat("ar-EG");
-  const normalize = (text) => String(text || "").normalize("NFKD").replace(/\p{M}/gu, "").replace(/[\u064B-\u065F\u0670\u06D6-\u06EDـ]/g, "").replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/[^\u0621-\u064A\s]/g, " ").replace(/\s+/g, " ").trim();
   const verseKey = (ayah) => `${settings.surah}:${ayah}`;
   // A timing provider deliberately accepts only real alignment metadata. It
   // never derives word timing by splitting an ayah duration into equal parts.
@@ -35,16 +38,8 @@
   }
   const wordTimings = new ReciterWordTimingProvider();
   const wordRange = (from, to) => Array.from({ length: Math.max(0, to - from + 1) }, (_, index) => from + index);
-  // Supports both the current app data interface and the already-published
-  // builds that expose PAGE_MAP but not QuranAppData.pageForVerse.
-  function pageForVerse(key) {
-    if (typeof app.pageForVerse === "function") return app.pageForVerse(key);
-    if (typeof PAGE_MAP !== "undefined") return PAGE_MAP.find((entry) => entry.verses?.some(([verse]) => verse === key))?.page || null;
-    return null;
-  }
-
-  function splitSegments(text, ayah) {
-    const words = text.split(/\s+/).filter(Boolean), segments = [];
+  function splitSegments(words, ayah) {
+    const text = words.join(" "), segments = [];
     if (words.length <= 4) return [{ ayah, verseKey: verseKey(ayah), segmentIndex: 0, startWord: 0, endWord: words.length - 1, text, words }];
     for (let start = 0, segmentIndex = 0; start < words.length; segmentIndex++) {
       let end = Math.min(words.length, start + 3);
@@ -57,11 +52,10 @@
   }
   function units() {
     return Array.from({ length: settings.to - settings.from + 1 }, (_, index) => {
-      const ayah = settings.from + index, key = verseKey(ayah), text = app.getVerseText(key);
-      if (!text) throw new Error(`Missing canonical text for ${key}`);
-      const page = pageForVerse(key);
-      if (!page) throw new Error(`Missing Mushaf page for ${key}`);
-      return { ayah, verseKey: key, page, text, segments: splitSegments(text, ayah) };
+      const ayah = settings.from + index, key = verseKey(ayah), indexed = recognitionIndex?.verses[key];
+      if (!indexed?.words?.length) throw new Error(`Missing canonical words for ${key}`);
+      const words = indexed.words.map((word) => word.canonical), text = words.join(" ");
+      return { ayah, verseKey: key, page: indexed.page, text, segments: splitSegments(words, ayah) };
     });
   }
   const ayah = () => state.units[state.ayahIndex];
@@ -113,10 +107,10 @@
     state.ayahIndex = ayahIndex; state.segmentIndex = segmentIndex; state.targetKind = targetKind; state.hidden = isHidden;
     const current = unit();
     state.currentVerseKey = current.verseKey; state.currentSegment = current.segmentIndex; state.currentPage = ayah().page;
-    state.expectedText = targetText(); state.expectedWords = normalize(state.expectedText).split(" ").filter(Boolean);
+    state.expectedText = targetText(); state.expectedWordRefs = expectedWordRefs();
+    state.expectedWords = state.expectedWordRefs.map((ref) => recognitionIndex.verses[ref.verseKey].words[ref.wordIndex].normalized);
     state.segmentStartWord = targetKind === "unit" ? current.startWord : 0;
     state.segmentEndWord = targetKind === "unit" ? current.endWord : Math.max(0, state.expectedWords.length - 1);
-    state.expectedWordRefs = expectedWordRefs();
     state.revealedWordCount = 0; state.wrongWordIndex = null; state.activeWordIndex = null; state.confirmedWords = []; state.verificationMode = "live_streaming";
     if (targetKind !== "cross-link") { state.currentAudioVerseKey = state.currentVerseKey; audio.src = app.audioUrlFor(settings.reciter, state.currentVerseKey); }
     assertAudio(); log("setCurrentTarget");
@@ -134,7 +128,7 @@
         if (event.type === "word_committed") {
           const index = Number(event.wordIndex);
           const identity = state.expectedWordRefs[index];
-          if (!identity || identity.verseKey !== event.verseKey || identity.wordIndex !== Number(event.wordIndexInAyah)) { console.error("[Quran Memorization] invalid canonical word identity", event); return; }
+          if (!identity || identity.verseKey !== event.verseKey || identity.wordIndex !== Number(event.wordIndexInAyah)) { window.QuranLiveStatus.lastError = "invalid_canonical_word_identity"; console.error("[Quran Memorization] invalid canonical word identity", event); return; }
           state.confirmedWords = state.confirmedWords || [];
           if (!state.confirmedWords.some((word) => word.verseKey === identity.verseKey && word.wordIndex === identity.wordIndex)) state.confirmedWords.push(identity);
           state.wrongWordIndex = null;
@@ -305,10 +299,10 @@
   function validSetup() { const ok = microphoneReady && settings.reciter && +$("#memorizationFrom").value <= +$("#memorizationTo").value; $("#startMemorization").disabled = !ok; $("#memorizationSetupMessage").textContent = ok ? "" : microphoneReady ? "تحقق من نطاق الآيات والقارئ." : "فعّل الميكروفون لبدء جلسة التحفيظ."; }
   function renderReciters() { const select = $("#memorizationReciter"), list = app.getEnabledReciters(); if (!settings.reciter || !list.some(([id]) => id === settings.reciter)) settings.reciter = list[0]?.[0] || ""; select.replaceChildren(...list.map(([id, name]) => new Option(name, id))); select.value = settings.reciter; validSetup(); }
   function resume() { try { const saved = JSON.parse(localStorage.getItem(storeKey) || "null"); if (localStorage.getItem(activeKey) !== "true" || saved?.schema !== 4 || !saved.state || saved.state.phase === S.COMPLETE) return false; settings = saved.settings; state = saved.state; state.svgRenderToken = 0; state.currentAyahMastered = !!state.currentAyahMastered; $("#home").classList.add("hidden"); $("#memorizationSetup").classList.add("hidden"); $("#memorizationSession").classList.remove("hidden"); $("#memorizationSessionTitle").textContent = `سورة ${app.surahNames[settings.surah]}`; $("#memorizationSessionRange").textContent = `الآيات ${nf.format(settings.from)} — ${nf.format(settings.to)}`; stage("تم استئناف الجلسة — تابع من حيث توقفت"); return true; } catch { return false; } }
-  async function openSetup() { $("#home").classList.add("hidden"); $("#memorizationSetup").classList.remove("hidden"); await app.textReady; if (!restoreOffered) { restoreOffered = true; if (resume()) return; } const select = $("#memorizationSurah"); if (!select.options.length) select.replaceChildren(...app.surahNames.slice(1).map((name, index) => new Option(`${nf.format(index + 1)} — سورة ${name} (${nf.format(app.ayahCounts[index + 1])})`, index + 1))); select.value = settings.surah; populateAyahs(); renderReciters(); }
+  async function openSetup() { $("#home").classList.add("hidden"); $("#memorizationSetup").classList.remove("hidden"); try { await Promise.all([app.textReady, recognitionIndexReady]); } catch (error) { $("#memorizationSetupMessage").textContent = `تعذر تحميل فهرس القرآن: ${error.message}`; return; } if (!restoreOffered) { restoreOffered = true; if (resume()) return; } const select = $("#memorizationSurah"); if (!select.options.length) select.replaceChildren(...app.surahNames.slice(1).map((name, index) => new Option(`${nf.format(index + 1)} — سورة ${name} (${nf.format(app.ayahCounts[index + 1])})`, index + 1))); select.value = settings.surah; populateAyahs(); renderReciters(); }
   function setMicrophoneSwitch(on) { const button = $("#memorizationPermission"), section = button.closest(".memorization-permission"); button.setAttribute("aria-checked", String(on)); button.setAttribute("aria-label", on ? "إيقاف الميكروفون" : "تفعيل الميكروفون"); section.classList.toggle("ready", on); }
-  async function prepareMicrophone() { const button = $("#memorizationPermission"), hint = $("#memorizationPermissionHint"); if (microphoneReady) { microphoneStream?.getTracks().forEach((track) => track.stop()); microphoneStream = null; microphoneReady = false; setMicrophoneSwitch(false); hint.textContent = "فعّل الميكروفون مرة واحدة قبل البدء."; validSetup(); return; } button.disabled = true; hint.textContent = "جارٍ تجهيز الميكروفون…"; try { microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true }); microphoneReady = true; setMicrophoneSwitch(true); hint.textContent = "الميكروفون جاهز وسيبدأ الاستماع تلقائياً."; } catch { microphoneReady = false; setMicrophoneSwitch(false); hint.textContent = "لم نتمكن من استخدام الميكروفون. اسمح به من إعدادات المتصفح ثم أعد المحاولة."; } finally { button.disabled = false; validSetup(); } }
-  function start() { settings.surah = +$("#memorizationSurah").value; settings.from = +$("#memorizationFrom").value; settings.to = +$("#memorizationTo").value; if (settings.from > settings.to || !settings.reciter || !microphoneReady) return validSetup(); try { state = { units: units(), ayahIndex: 0, segmentIndex: 0, targetKind: "unit", hidden: false, visibleCount: 0, hiddenCount: 0, link: 0, failures: 0, successes: 0, mistakes: 0, masteredAyahs: [], phase: S.SETUP, sequenceState: "LEARNING_CURRENT_AYAH", currentAyahMastered: false, started: Date.now(), currentVerseKey: "", currentAudioVerseKey: "", currentPage: null, currentSegment: 0, segmentStartWord: 0, segmentEndWord: 0, expectedText: "", expectedWords: [], revealedWordCount: 0, wrongWordIndex: null, activeWordIndex: null, svgRenderToken: 0 }; } catch (error) { $("#memorizationSetupMessage").textContent = `تعذر تجهيز الآية: ${error.message}`; return; } $("#memorizationSetup").classList.add("hidden"); $("#memorizationSession").classList.remove("hidden"); $("#memorizationSessionTitle").textContent = `سورة ${app.surahNames[settings.surah]}`; $("#memorizationSessionRange").textContent = `الآيات ${nf.format(settings.from)} — ${nf.format(settings.to)}`; startUnit(); }
+  async function prepareMicrophone() { const button = $("#memorizationPermission"), hint = $("#memorizationPermissionHint"); if (microphoneReady) { microphoneStream?.getTracks().forEach((track) => track.stop()); microphoneStream = null; microphoneReady = false; if (window.QuranLiveStatus) window.QuranLiveStatus.mic = false; setMicrophoneSwitch(false); hint.textContent = "فعّل الميكروفون مرة واحدة قبل البدء."; validSetup(); return; } button.disabled = true; hint.textContent = "جارٍ تجهيز الميكروفون…"; try { microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true }); microphoneReady = true; if (window.QuranLiveStatus) window.QuranLiveStatus.mic = microphoneStream.active; setMicrophoneSwitch(true); hint.textContent = "الميكروفون جاهز وسيبدأ الاستماع تلقائياً."; } catch (error) { microphoneReady = false; if (window.QuranLiveStatus) window.QuranLiveStatus.lastError = error.message || "microphone_permission_failed"; setMicrophoneSwitch(false); hint.textContent = "لم نتمكن من استخدام الميكروفون. اسمح به من إعدادات المتصفح ثم أعد المحاولة."; } finally { button.disabled = false; validSetup(); } }
+  async function start() { settings.surah = +$("#memorizationSurah").value; settings.from = +$("#memorizationFrom").value; settings.to = +$("#memorizationTo").value; if (settings.from > settings.to || !settings.reciter || !microphoneReady) return validSetup(); try { await recognitionIndexReady; state = { units: units(), ayahIndex: 0, segmentIndex: 0, targetKind: "unit", hidden: false, visibleCount: 0, hiddenCount: 0, link: 0, failures: 0, successes: 0, mistakes: 0, masteredAyahs: [], phase: S.SETUP, sequenceState: "LEARNING_CURRENT_AYAH", currentAyahMastered: false, started: Date.now(), currentVerseKey: "", currentAudioVerseKey: "", currentPage: null, currentSegment: 0, segmentStartWord: 0, segmentEndWord: 0, expectedText: "", expectedWords: [], revealedWordCount: 0, wrongWordIndex: null, activeWordIndex: null, svgRenderToken: 0 }; } catch (error) { $("#memorizationSetupMessage").textContent = `تعذر تجهيز الآية: ${error.message}`; return; } $("#memorizationSetup").classList.add("hidden"); $("#memorizationSession").classList.remove("hidden"); $("#memorizationSessionTitle").textContent = `سورة ${app.surahNames[settings.surah]}`; $("#memorizationSessionRange").textContent = `الآيات ${nf.format(settings.from)} — ${nf.format(settings.to)}`; startUnit(); }
 
   $("#memorizeButton").onclick = openSetup;
   $("#memorizationSetupBack").onclick = () => { $("#memorizationSetup").classList.add("hidden"); $("#home").classList.remove("hidden"); };
@@ -325,5 +319,5 @@
   $("#memorizationExitConfirm").onclick = () => { audio.pause(); stopRecord(); clearSession(); $("#memorizationExitDialog").classList.add("hidden"); $("#memorizationSession").classList.add("hidden"); $("#home").classList.remove("hidden"); };
   // Refreshing an active session returns directly to it; the learner must
   // explicitly choose "إنهاء الجلسة" to clear this saved state.
-  Promise.resolve(app.textReady).then(() => { if (!restoreOffered) { restoreOffered = true; resume(); } });
+  Promise.all([app.textReady, recognitionIndexReady]).then(() => { if (!restoreOffered) { restoreOffered = true; resume(); } }).catch((error) => console.error("[Quran Memorization] index unavailable", error));
 })();
