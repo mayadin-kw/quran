@@ -30,19 +30,19 @@
   <!-- ============ القارئ ============ -->
   <section id="reader" class="view reader" aria-label="المصحف" hidden>
     <header class="topbar">
-      <button id="backBtn" class="icon-btn" type="button" aria-label="رجوع">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+      <button id="menuBtn" class="icon-btn" type="button" aria-label="القائمة" aria-controls="drawer" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
       </button>
       <div class="topbar-title">
         <strong id="titleSurah">—</strong>
         <span id="titleJuz"></span>
       </div>
-      <button id="menuBtn" class="icon-btn" type="button" aria-label="القائمة" aria-controls="drawer" aria-expanded="false">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      <button id="backBtn" class="icon-btn" type="button" aria-label="رجوع">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
       </button>
     </header>
 
-    <div id="pager" class="pager" tabindex="-1"></div>
+    <div id="pager" class="pager" tabindex="-1"><div id="track" class="track"></div></div>
 
     <button id="navPrev" class="page-arrow arrow-prev" type="button" aria-label="الصفحة السابقة">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
@@ -97,7 +97,7 @@
           <span class="field-label">اختر صوت القارئ:</span>
           <select id="reciterSelect"></select>
         </label>
-        <p class="credits">النص: <a href="https://tanzil.net" target="_blank" rel="noopener">Tanzil</a> · التفسير الميسر: مجمع الملك فهد · التلاوات: <a href="https://everyayah.com" target="_blank" rel="noopener">EveryAyah</a></p>
+        <p class="credits">المصحف: مجمع الملك فهد عبر <a href="https://quran.com" target="_blank" rel="noopener">Quran.com</a> · التفسير: الجلالين · التلاوات: <a href="https://everyayah.com" target="_blank" rel="noopener">EveryAyah</a></p>
       </div>
 
       <!-- الانتقال السريع -->
@@ -141,9 +141,14 @@
             <select id="listenTo"></select>
           </label>
         </div>
+        <label class="check">
+          <input id="withTafsir" type="checkbox">
+          <span class="box"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg></span>
+          <span>استماع الآيات مع التفسير</span>
+        </label>
         <p class="note">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
-          ملاحظة: يمكنك تغيير صوت القارئ من القائمة الجانبية الرئيسية.
+          لاختيار صوت القارئ قم بالرجوع.. واختيار القارئ من أسفل القائمة الجانبية.
         </p>
         <button id="listenGo" class="primary-btn" type="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
