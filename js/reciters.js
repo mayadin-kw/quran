@@ -27,16 +27,3 @@ window.RECITERS = [
   { id: 'Akram_AlAlaqimy_128kbps', name: 'أكرم العلاقمي' },
 ];
 
-// قرّاء لهم توقيت لكل كلمة على Quran.com — يُستخدم لتشغيل مقطع من الآية أثناء التفسير.
-// إذا لم يكن القارئ المختار هنا تُقرأ المقاطع بصوت العفاسي.
-window.WORD_TIMING_RECITERS = {
-  Alafasy_128kbps: 7,
-  'Abdurrahmaan_As-Sudais_192kbps': 3,
-  'Saood_ash-Shuraym_128kbps': 10,
-  Abdul_Basit_Murattal_192kbps: 2,
-  Husary_128kbps: 6,
-  Minshawy_Murattal_128kbps: 9,
-  'Abu_Bakr_Ash-Shaatree_128kbps': 4,
-  Hani_Rifai_192kbps: 5,
-  Mohammad_al_Tablaway_128kbps: 11,
-};

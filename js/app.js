@@ -35,11 +35,11 @@
     navPrev: $('#navPrev'), navNext: $('#navNext'),
   };
 
-  function toast(msg) {
+  function toast(msg, ms = 2200) {
     els.toast.textContent = msg;
     els.toast.classList.add('show');
     clearTimeout(toast.t);
-    toast.t = setTimeout(() => els.toast.classList.remove('show'), 2200);
+    toast.t = setTimeout(() => els.toast.classList.remove('show'), ms);
   }
 
   async function copyText(text, msg) {
@@ -570,6 +570,18 @@
     return items;
   }
 
+  // يحوّل الرسم العثماني إلى نص يقرؤه صوت الجهاز قراءة عادية
+  function speakable(text) {
+    return text
+      .replace(/\u0640?\u0670/g, 'ا')                 // الألف الخنجرية (ـٰ) ← ألف
+      .replace(/\u0671/g, 'ا')                        // ألف الوصل ٱ
+      .replace(/ءَا/g, 'آ')                           // ءَامنوا ← آمنوا
+      .replace(/[\u08F0-\u08F2]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x08F0 + 0x064B)) // تنوين متتابع
+      .replace(/[\u06D6-\u06ED\u0640]/g, '')            // علامات الوقف والضبط القرآنية والتطويل
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   // يقسّم الشرح إلى جمل قصيرة للقراءة الصوتية
   function chunksOf(text) {
     const out = [];
@@ -897,10 +909,12 @@
       speechSynthesis.speak(u);
       init();
     }
+    let started = false; // هل نطق المحرك شيئاً فعلاً؟ (بعض أجهزة أندرويد لا تُظهر قائمة الأصوات لكنها تنطق)
     let armLive = null;
     let live = null; // مرجع ثابت: كروم لا يرسل حدث النهاية إذا حُذف الكائن من الذاكرة
     function speak(text, onWord) {
       return new Promise((resolve) => {
+        if (!supported) { resolve(false); return; }
         const u = new SpeechSynthesisUtterance(text);
         live = u;
         let guard = 0;
@@ -909,7 +923,7 @@
         const arm = (ms) => { clearTimeout(guard); guard = setTimeout(() => { speechSynthesis.cancel(); finish(false); }, ms); };
         armLive = { arm, stop: () => clearTimeout(guard), ms: 3000 + text.length * 110 };
         arm(4000 + text.length * 120);
-        u.onstart = () => arm(3000 + text.length * 110);
+        u.onstart = () => { started = true; arm(3000 + text.length * 110); };
         u.lang = voice ? voice.lang : 'ar-SA';
         if (voice) u.voice = voice;
         u.rate = 0.95;
@@ -929,42 +943,17 @@
     }
     return {
       init, unlock, speak, warned: false,
+      works: () => started,
       cancel: () => { if (supported) speechSynthesis.cancel(); },
       pause: () => { if (!supported) return; if (armLive) armLive.stop(); speechSynthesis.pause(); },
       resume: () => { if (!supported) return; if (armLive) armLive.arm(armLive.ms); speechSynthesis.resume(); },
     };
   })();
 
-  /* ================= توقيت كلمات الآية (لتشغيل جزء منها أثناء التفسير) ================= */
-  const timingCache = new Map();
-  function timingFor(i) {
-    const rid = window.WORD_TIMING_RECITERS[reciterId] || 7;
-    const key = `${rid}:${i}`;
-    if (!timingCache.has(key)) {
-      const [s, a] = Q.ayat[i];
-      timingCache.set(key, fetch(`https://api.quran.com/api/v4/recitations/${rid}/by_ayah/${s}:${a}?fields=segments`)
-        .then((r) => r.json())
-        .then((d) => {
-          const file = d.audio_files && d.audio_files[0];
-          if (!file || !file.segments || !file.segments.length) return null;
-          let url = file.url;
-          if (url.startsWith('//')) url = `https:${url}`;
-          else if (!/^https?:/.test(url)) url = `https://verses.quran.com/${url}`;
-          const seg = new Map();
-          file.segments.forEach((x) => { if (x.length >= 4) seg.set(Number(x[1]) - 1, [Number(x[2]), Number(x[3])]); });
-          return { url, seg };
-        })
-        .catch(() => { timingCache.delete(key); return null; }));
-    }
-    return timingCache.get(key);
-  }
-
   /* ================= مشغل الصوت ================= */
   const player = (() => {
     const audio = new Audio();
     audio.preload = 'auto';
-    const clip = new Audio();
-    clip.preload = 'auto';
     const ui = {
       title: $('#playerTitle'), reciter: $('#playerReciter'), seek: $('#seek'),
       cur: $('#timeCur'), dur: $('#timeDur'),
@@ -977,7 +966,7 @@
     let finished = false;
     let seeking = false;
     let token = 0;         // يتغير عند كل إيقاف/انتقال لإلغاء أي تسلسل جارٍ
-    let phase = null;      // 'audio' | 'clip' | 'speech'
+    let phase = null;      // 'audio' | 'speech'
     let paused = false;
     let preloader = null;
 
@@ -1055,7 +1044,6 @@
     function stopAll() {
       token++;
       audio.pause();
-      clip.pause();
       tts.cancel();
       phase = null;
       paused = false;
@@ -1079,7 +1067,7 @@
       audio.play().catch((err) => { if (err.name !== 'AbortError') setState('paused'); });
       const nx = queue[qi + 1];
       if (nx && nx.kind !== 'tafsir') { preloader = new Audio(); preloader.preload = 'auto'; preloader.src = urlFor(nx); }
-      if (nx && nx.kind === 'tafsir') { loadTafsir(); timingFor(nx.i); }
+      if (nx && nx.kind === 'tafsir') loadTafsir();
     }
 
     function advance() {
@@ -1091,32 +1079,10 @@
       syncTafsirButton();
     }
 
-    // تشغيل جزء من ملف الآية بين زمنين (بالملي ثانية)
-    function playClip(url, start, end, my) {
-      return new Promise((resolve) => {
-        phase = 'clip';
-        let timer = 0;
-        const finish = () => { clearInterval(timer); clip.removeEventListener('playing', onPlaying); clip.onerror = null; resolve(); };
-        const onPlaying = () => {
-          setState('playing');
-          clearInterval(timer);
-          timer = setInterval(() => {
-            if (my !== token) { finish(); return; }
-            if (clip.currentTime * 1000 >= end - 20 || clip.ended) { clip.pause(); finish(); }
-          }, 30);
-        };
-        clip.addEventListener('playing', onPlaying);
-        clip.onerror = finish;
-        const go = () => {
-          clip.currentTime = start / 1000;
-          clip.play().catch(finish);
-        };
-        if (clip.src !== url) {
-          clip.src = url;
-          clip.addEventListener('loadedmetadata', go, { once: true });
-          clip.load();
-        } else go();
-      });
+    function noVoice() {
+      if (tts.warned) return;
+      tts.warned = true;
+      toast('جهازك لا يحتوي على صوت عربي للقراءة. ثبّته من: الإعدادات ← الإدارة العامة/النظام ← تحويل النص إلى كلام ← محرك Google ← تثبيت بيانات الصوت ← العربية', 9000);
     }
 
     async function waitWhilePaused(my) {
@@ -1136,32 +1102,31 @@
         if (my !== token) return;
       }
       syncTafsirButton();
-      const [timing, voice] = await Promise.all([timingFor(i), tts.init()]);
+      await tts.init();
       if (my !== token) return;
-      if (!voice && !tts.warned) { tts.warned = true; toast('لا يوجد صوت عربي في جهازك لقراءة الشرح، ستُقرأ مقاطع الآية فقط'); }
       setState('playing');
+      // صوت واحد عادي (صوت الجهاز) يقرأ جزء الآية ثم شرحه، بلا تلاوة قارئ
       for (let n = 0; n < items.length; n++) {
         const it = items[n];
         setProgress(n, items.length);
         ui.cur.textContent = ar(n + 1);
         ui.dur.textContent = ar(items.length);
-        if (it.q && timing) {
-          const a = timing.seg.get(it.f);
-          const b = timing.seg.get(it.t);
-          if (a && b) {
-            tafsirHighlight(i, n, 'q');
-            await playClip(timing.url, a[0], b[1], my);
-            if (my !== token) return;
-            await waitWhilePaused(my);
-          }
+        if (it.q) {
+          tafsirHighlight(i, n, 'q');
+          phase = 'speech';
+          const ok = await tts.speak(speakable(it.q), () => {});
+          if (my !== token) return;
+          if (!ok && !tts.works()) { noVoice(); advance(); return; }
+          await waitWhilePaused(my);
         }
-        if (it.e && voice) {
+        if (it.e) {
           const chunks = chunksOf(it.e);
           for (let c = 0; c < chunks.length; c++) {
             tafsirHighlight(i, n, 'e', c, -1);
             phase = 'speech';
-            await tts.speak(chunks[c], (w) => { if (my === token) tafsirHighlight(i, n, 'e', c, w); });
+            const ok = await tts.speak(chunks[c], (w) => { if (my === token) tafsirHighlight(i, n, 'e', c, w); });
             if (my !== token) return;
+            if (!ok && !tts.works()) { noVoice(); advance(); return; }
             await waitWhilePaused(my);
           }
         }
@@ -1209,7 +1174,6 @@
       if (finished) { tts.unlock(); playAt(0); return; }
       if (phase === 'audio') { if (audio.paused) audio.play().catch(() => {}); else audio.pause(); return; }
       paused = !paused;
-      if (phase === 'clip') { if (paused) clip.pause(); else clip.play().catch(() => {}); }
       if (phase === 'speech') { if (paused) tts.pause(); else tts.resume(); }
       setState(paused ? 'paused' : 'playing');
     });
