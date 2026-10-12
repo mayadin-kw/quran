@@ -967,6 +967,7 @@
     let seeking = false;
     let token = 0;         // يتغير عند كل إيقاف/انتقال لإلغاء أي تسلسل جارٍ
     let phase = null;      // 'audio' | 'speech'
+    let tafsirSync = null; // أثناء تشغيل ملف تفسير مسجّل: { i, parts, ends, last }
     let paused = false;
     let preloader = null;
 
@@ -1043,6 +1044,7 @@
 
     function stopAll() {
       token++;
+      tafsirSync = null;
       audio.pause();
       tts.cancel();
       phase = null;
@@ -1102,10 +1104,58 @@
         if (my !== token) return;
       }
       syncTafsirButton();
+      const ends = await tafsirAudioEnds(i);
+      if (my !== token) return;
+      const parts = tafsirParts(items);
+      if (ends && ends.length === parts.length) { playTafsirFile(i, parts, ends); return; }
+      speakTafsir(i, items, my);
+    }
+
+    // التفسير المسجّل مسبقاً (tools/tafsir_audio.py): ملف واحد للآية، وزمن نهاية كل مقطع
+    let tafsirIndex = null;
+    function tafsirAudioEnds(i) {
+      tafsirIndex ||= fetch(`${window.TAFSIR_AUDIO_BASE}index.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      return tafsirIndex.then((x) => (x && x.ayat[i]) || null);
+    }
+    // نفس ترتيب المقاطع في الملف: جزء الآية ثم جمل شرحه
+    function tafsirParts(items) {
+      const parts = [];
+      items.forEach((it, n) => {
+        if (it.q) parts.push({ n });
+        if (it.e) chunksOf(it.e).forEach((ch, c) => parts.push({ n, c, words: ch.split(' ').length }));
+      });
+      return parts;
+    }
+    function playTafsirFile(i, parts, ends) {
+      const [s, a] = Q.ayat[i];
+      tafsirSync = { i, parts, ends, last: '' };
+      ui.back.disabled = false;
+      ui.fwd.disabled = false;
+      phase = 'audio';
+      audio.src = `${window.TAFSIR_AUDIO_BASE}${pad3(s)}${pad3(a)}.mp3`;
+      audio.play().catch((err) => { if (err.name !== 'AbortError') setState('paused'); });
+    }
+    function syncTafsirFile() {
+      const x = tafsirSync;
+      if (!x) return;
+      const t = audio.currentTime * 1000;
+      let k = 0;
+      while (k < x.ends.length - 1 && x.ends[k] <= t) k++;
+      const p = x.parts[k];
+      const from = k ? x.ends[k - 1] : 0;
+      const w = p.words ? Math.min(p.words - 1, Math.floor(((t - from) / (x.ends[k] - from)) * p.words)) : -1;
+      const key = `${k}:${w}`;
+      if (key === x.last) return;
+      x.last = key;
+      if (p.words) tafsirHighlight(x.i, p.n, 'e', p.c, w);
+      else tafsirHighlight(x.i, p.n, 'q');
+    }
+
+    // بديل عند عدم وجود ملف مسجّل: صوت الجهاز يقرأ جزء الآية ثم شرحه
+    async function speakTafsir(i, items, my) {
       await tts.init();
       if (my !== token) return;
       setState('playing');
-      // صوت واحد عادي (صوت الجهاز) يقرأ جزء الآية ثم شرحه، بلا تلاوة قارئ
       for (let n = 0; n < items.length; n++) {
         const it = items[n];
         setProgress(n, items.length);
@@ -1160,11 +1210,24 @@
     audio.addEventListener('playing', () => setState('playing'));
     audio.addEventListener('pause', () => { if (phase === 'audio') setState('paused'); });
     audio.addEventListener('waiting', () => setState('loading'));
-    audio.addEventListener('timeupdate', () => { if (phase === 'audio') setProgress(audio.currentTime, audio.duration); });
+    audio.addEventListener('timeupdate', () => { if (phase === 'audio') { setProgress(audio.currentTime, audio.duration); syncTafsirFile(); } });
+    setInterval(() => { if (tafsirSync && !audio.paused) syncTafsirFile(); }, 120);
     audio.addEventListener('loadedmetadata', () => { if (phase === 'audio') setProgress(audio.currentTime, audio.duration); });
-    audio.addEventListener('ended', () => { if (phase === 'audio') advance(); });
+    audio.addEventListener('ended', () => {
+      if (phase !== 'audio') return;
+      if (tafsirSync) { tafsirHighlight(tafsirSync.i, -1); tafsirSync = null; }
+      advance();
+    });
     audio.addEventListener('error', () => {
       if (!audio.getAttribute('src') || phase !== 'audio') return;
+      if (tafsirSync) {
+        // تعذّر ملف التفسير: نكمل بصوت الجهاز
+        const { i } = tafsirSync;
+        tafsirSync = null;
+        phase = null;
+        loadTafsir().then((t) => speakTafsir(i, tafsirItems(i, t[i]), token));
+        return;
+      }
       setState('paused');
       toast('تعذّر تشغيل التلاوة، تحقق من الاتصال');
     });
