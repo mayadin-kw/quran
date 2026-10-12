@@ -1,157 +1,199 @@
 <!doctype html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <meta name="theme-color" content="#123c35" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b3d30">
+  <meta name="description" content="القرآن الكريم برسم المصحف العثماني — قراءة واستماع وتفسير وبحث">
   <title>القرآن الكريم</title>
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Cairo:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css" />
-  <link rel="stylesheet" href="reader.css?v=20260912-coordinates-3" />
-  <link rel="stylesheet" href="ayah-interaction.css?v=20260912-actions-5" />
-  <style>.audio-credit{margin:16px 0 0;text-align:center;color:#73837d;font-size:10px}.audio-credit a{color:#a67d34;text-decoration:none;font-weight:700}</style>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Reem+Kufi:wght@500;700&display=swap">
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <main id="home" class="home-screen">
-    <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
-    <section class="welcome-card" aria-label="الصفحة الرئيسية">
-      <img class="brand-logo" src="Logo.png" alt="شعار القرآن الكريم" />
-      <p class="welcome-text">رفيقك لقراءة كتاب الله وحفظه</p>
-      <div class="home-actions">
-        <button class="primary-action" id="readButton"><span class="button-icon">۞</span>قراءة واستماع<span class="arrow">←</span></button>
-        <button class="secondary-action" id="memorizeButton"><span class="button-icon">✦</span>تحفيظ<span class="arrow">←</span></button>
+
+  <!-- ============ الصفحة الرئيسية ============ -->
+  <section id="home" class="view home" aria-label="الصفحة الرئيسية">
+    <div class="home-inner">
+      <img class="logo" src="assets/logo.svg" alt="" width="168" height="168">
+      <h1 class="home-title">القرآن الكريم</h1>
+      <p class="home-sub">﴿ كِتَٰبٌ أَنزَلْنَٰهُ إِلَيْكَ مُبَٰرَكٌ ﴾</p>
+      <button id="startBtn" class="start-btn" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6c-2.2-1.5-5-2-8-1.6v13c3-.4 5.8.1 8 1.6 2.2-1.5 5-2 8-1.6v-13c-3-.4-5.8.1-8 1.6zM12 6v13"/></svg>
+        <span>القراءة والإستماع</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- ============ القارئ ============ -->
+  <section id="reader" class="view reader" aria-label="المصحف" hidden>
+    <header class="topbar">
+      <button id="backBtn" class="icon-btn" type="button" aria-label="رجوع">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+      </button>
+      <div class="topbar-title">
+        <strong id="titleSurah">—</strong>
+        <span id="titleJuz"></span>
       </div>
-      <p class="bismillah">بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ</p>
-    </section>
-  </main>
-
-  <main id="memorizationSetup" class="memorization-screen hidden" dir="rtl">
-    <header class="memorization-header"><button id="memorizationSetupBack" class="memorization-back" type="button">← <span>العودة</span></button><div><strong>التحفيظ</strong><small>ابدأ خطة حفظ هادئة ومنظمة</small></div></header>
-    <section class="memorization-setup-card">
-      <p class="memorization-kicker">جلسة جديدة</p><h1>ماذا ستحفظ اليوم؟</h1>
-      <div class="memorization-setup-fields">
-        <label class="memorization-field memorization-field-wide">السورة<select id="memorizationSurah" aria-label="اختر السورة"></select></label>
-        <div class="memorization-range"><label class="memorization-field">من الآية<select id="memorizationFrom" aria-label="من الآية"></select></label><label class="memorization-field">إلى الآية<select id="memorizationTo" aria-label="إلى الآية"></select></label></div>
-      </div>
-      <section class="memorization-reciters"><div><h2>القارئ</h2><p>اختر قارئك ثم استمع إلى معاينة عشوائية من القرآن.</p></div><div class="memorization-reciter-row"><select id="memorizationReciter" aria-label="اختر القارئ"></select><button id="memorizationPreviewAudio" type="button">▶ استماع</button></div></section>
-      <section class="memorization-permission" aria-labelledby="memorizationPermissionTitle"><div><h2 id="memorizationPermissionTitle">تجهيز الجلسة</h2><p id="memorizationPermissionHint">فعّل الميكروفون مرة واحدة قبل البدء.</p></div><button id="memorizationPermission" class="memorization-switch" type="button" role="switch" aria-checked="false" aria-label="تفعيل الميكروفون"><i aria-hidden="true"></i></button></section>
-      <p id="memorizationSetupMessage" class="memorization-message" aria-live="polite"></p>
-      <button id="startMemorization" class="memorization-start" type="button" disabled>ابدأ التحفيظ</button>
-    </section>
-  </main>
-
-  <main id="memorizationSession" class="memorization-screen hidden" dir="rtl">
-    <header class="memorization-header"><button id="memorizationExit" class="memorization-back" type="button">← <span>إنهاء</span></button><div><strong id="memorizationSessionTitle">التحفيظ</strong><small id="memorizationSessionRange"></small></div><button id="memorizationPause" class="memorization-pause" type="button">إيقاف مؤقت</button></header>
-    <section class="memorization-session-card">
-      <div class="memorization-progress-head"><span>تقدم الحفظ</span><b id="memorizationProgressLabel">٠٪</b></div><div class="memorization-progress"><i id="memorizationProgressBar"></i></div>
-      <p id="memorizationStage" class="memorization-stage">استمع إلى القارئ</p>
-      <section id="memorizationRepetition" class="memorization-repetition" aria-live="polite">
-        <div><strong id="memorizationCounter">مرحلة الترديد</strong><small id="memorizationRemaining"></small></div>
-        <div id="memorizationSteps" class="memorization-steps" aria-label="تقدم التكرار"></div>
-      </section>
-      <section class="memorization-mushaf-wrap" aria-label="مصحف التحفيظ بالكلمات">
-        <p id="memorizationMushafStatus" class="memorization-mushaf-status" aria-live="polite">جارٍ تجهيز صفحة المصحف…</p>
-        <div id="memorizationMushaf" class="memorization-mushaf"></div>
-      </section>
-      <p id="memorizationFeedback" class="memorization-feedback" aria-live="polite"></p>
-      <div class="memorization-mic-area" role="status" aria-live="polite"><div id="memorizationMic" class="memorization-mic" aria-hidden="true"><span>🎙</span></div><p id="memorizationMicHint">استمع إلى القارئ</p></div>
-      <div id="memorizationDemo" class="memorization-demo"><span>وضع تشخيصي</span><button id="memorizationDemoCorrect" type="button">محاكاة إجابة صحيحة</button><button id="memorizationDemoError" type="button">محاكاة خطأ</button></div>
-    </section>
-  </main>
-  <div id="memorizationExitDialog" class="memorization-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="memorizationExitTitle">
-    <div><h2 id="memorizationExitTitle">هل تريد إنهاء جلسة التحفيظ؟</h2><p>سيتم حفظ تقدمك فقط إذا اخترت متابعة الحفظ.</p><section><button id="memorizationExitCancel" type="button">متابعة الحفظ</button><button id="memorizationExitConfirm" type="button">إنهاء الجلسة</button></section></div>
-  </div>
-
-  <main id="reader" class="reader-screen hidden" aria-live="polite">
-    <header class="reader-header">
-      <button class="icon-button" id="menuButton" aria-label="فتح القائمة"><i></i><i></i><i></i></button>
-      <div class="reader-title"><span>القرآن الكريم</span><small id="surahLabel">سورة الفاتحة</small></div>
-      <button class="icon-button back-button" id="backButton" aria-label="العودة للصفحة الرئيسية">←</button>
+      <button id="menuBtn" class="icon-btn" type="button" aria-label="القائمة" aria-controls="drawer" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
     </header>
-    <section class="page-area" id="swipeArea">
-      <article class="quran-page" id="quranPage">
-        <img id="previewImage" class="swipe-preview" src="" alt="" aria-hidden="true" draggable="false" />
-        <img id="quranImage" src="" alt="صفحة من المصحف الشريف" draggable="false" />
-        <svg id="ayahLayer" class="ayah-layer" viewBox="0 0 345 550" preserveAspectRatio="none" aria-label="اضغط على الآية للاستماع أو النسخ"></svg>
-        <div id="ayahSelection" class="ayah-selection" hidden>
-          <div class="ayah-actions"><button id="listenAyah" type="button">▶ <span>استماع</span></button><button id="copyAyah" type="button">⧉ <span>نسخ</span></button></div>
-        </div>
-        <div class="page-loading" id="pageLoading">جارٍ تحميل الصفحة...</div>
-      </article>
-    </section>
-  </main>
 
-  <div class="overlay" id="overlay"></div>
-  <aside class="side-menu" id="sideMenu" aria-label="القائمة الجانبية">
-    <div class="menu-heading"><img src="Logo.png" alt="" /><button id="closeMenu" aria-label="إغلاق القائمة">×</button></div>
-    <div class="menu-content">
-      <section id="mainMenu">
-        <h2>القائمة</h2>
-        <button id="openJump" class="menu-item" type="button"><span>⌁</span> الانتقال إلى صفحة <b>←</b></button>
-        <button id="openListening" class="menu-item" type="button"><span>◖</span> استماع <b>←</b></button>
-        <button id="openReciter" class="menu-item" type="button"><span>♬</span> تحديد القارئ <b>←</b></button>
-        <p class="menu-note">اختر انتقالاً سريعاً إلى صفحة أو استمع إلى سورة وآيات محددة.</p>
-      </section>
-      <section id="jumpMenu" class="hidden">
-        <button id="backFromJump" class="menu-back" type="button">→ العودة للقائمة</button>
-        <h2>الانتقال إلى صفحة</h2>
-        <label for="pageSelect">رقم الصفحة</label>
-        <select id="pageSelect" aria-label="اختر رقم الصفحة"></select>
-        <button id="goToPage" class="go-button">انتقال <span>←</span></button>
-      </section>
-      <section id="listeningMenu" class="hidden">
-        <button id="backToMenu" class="menu-back" type="button">→ العودة للقائمة</button>
-        <h2>استماع</h2>
-        <label for="surahSelect">تحديد السورة</label>
-        <select id="surahSelect" aria-label="اختر السورة"></select>
-        <div class="listen-mode" role="group" aria-label="نوع الاستماع"><button data-mode="full" class="active" type="button">كاملة</button><button data-mode="range" type="button">تحديد</button></div>
-        <div id="rangeFields" class="range-fields hidden">
-          <label for="fromAyah">من آية</label><select id="fromAyah"></select>
-          <label for="toAyah">إلى آية</label><select id="toAyah" disabled></select>
+    <div id="pager" class="pager" tabindex="-1"></div>
+
+    <button id="navPrev" class="page-arrow arrow-prev" type="button" aria-label="الصفحة السابقة">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+    </button>
+    <button id="navNext" class="page-arrow arrow-next" type="button" aria-label="الصفحة التالية">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+
+    <div id="loading" class="loading"><span class="spinner"></span><span>جارٍ تحميل المصحف…</span></div>
+  </section>
+
+  <!-- ============ القائمة الجانبية ============ -->
+  <div id="scrim" class="scrim" hidden></div>
+  <aside id="drawer" class="drawer" aria-label="القائمة الجانبية" aria-hidden="true">
+    <div class="panels" id="panels">
+
+      <!-- اللوحة الرئيسية -->
+      <div class="panel" data-panel="main">
+        <div class="drawer-head">
+          <img src="assets/logo.svg" alt="" width="36" height="36">
+          <span>القرآن الكريم</span>
+          <button class="icon-btn small" type="button" data-close-drawer aria-label="إغلاق">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
         </div>
-        <button id="playSelection" class="go-button play-selection" type="button">▶ تشغيل</button>
-        <p class="audio-credit">التلاوة: الحصري المعلّم · <a href="https://everyayah.com/" target="_blank" rel="noopener">EveryAyah</a></p>
-      </section>
-      <section id="reciterMenu" class="hidden">
-        <button id="backFromReciter" class="menu-back" type="button">→ العودة للقائمة</button>
-        <h2>تحديد القارئ</h2>
-        <label for="reciterSelect">القارئ الحالي</label>
-        <select id="reciterSelect" aria-label="اختر القارئ"></select>
-      </section>
+
+        <div class="search">
+          <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
+          <input id="searchInput" type="search" placeholder="ابحث عن آية أو كلمة…" autocomplete="off" aria-label="بحث في القرآن">
+          <button id="searchClear" class="search-clear" type="button" aria-label="مسح" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>
+          </button>
+          <div id="searchResults" class="search-results" hidden></div>
+        </div>
+
+        <nav class="menu">
+          <button class="menu-item" type="button" data-open-panel="jump">
+            <span class="menu-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3L5 14h6l-1 7 8-11h-6z"/></svg></span>
+            <span>الانتقال السريع</span>
+            <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+          </button>
+          <button class="menu-item" type="button" data-open-panel="listen">
+            <span class="menu-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14v-2a8 8 0 0116 0v2"/><rect x="3" y="13" width="4" height="7" rx="1.5"/><rect x="17" y="13" width="4" height="7" rx="1.5"/></svg></span>
+            <span>استماع</span>
+            <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+          </button>
+        </nav>
+
+        <div class="drawer-spacer"></div>
+
+        <label class="field reciter-field">
+          <span class="field-label">اختر صوت القارئ:</span>
+          <select id="reciterSelect"></select>
+        </label>
+        <p class="credits">النص: <a href="https://tanzil.net" target="_blank" rel="noopener">Tanzil</a> · التفسير الميسر: مجمع الملك فهد · التلاوات: <a href="https://everyayah.com" target="_blank" rel="noopener">EveryAyah</a></p>
+      </div>
+
+      <!-- الانتقال السريع -->
+      <div class="panel" data-panel="jump">
+        <div class="panel-head">
+          <button class="icon-btn small" type="button" data-back aria-label="رجوع">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+          </button>
+          <h2>الانتقال السريع</h2>
+        </div>
+        <label class="field">
+          <span class="field-label">رقم الصفحة</span>
+          <select id="jumpPage"></select>
+        </label>
+        <button id="jumpGo" class="primary-btn" type="button">اذهب</button>
+      </div>
+
+      <!-- الاستماع -->
+      <div class="panel" data-panel="listen">
+        <div class="panel-head">
+          <button class="icon-btn small" type="button" data-back aria-label="رجوع">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+          </button>
+          <h2>استماع</h2>
+        </div>
+        <label class="field">
+          <span class="field-label">اختر السورة</span>
+          <select id="listenSurah"></select>
+        </label>
+        <div class="segmented" role="radiogroup" aria-label="نطاق الاستماع">
+          <button type="button" role="radio" aria-checked="true" data-range="full">كاملة</button>
+          <button type="button" role="radio" aria-checked="false" data-range="part">تحديد</button>
+        </div>
+        <div id="rangeFields" class="range-fields" hidden>
+          <label class="field">
+            <span class="field-label">من الآية</span>
+            <select id="listenFrom"></select>
+          </label>
+          <label class="field">
+            <span class="field-label">إلى الآية</span>
+            <select id="listenTo"></select>
+          </label>
+        </div>
+        <p class="note">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+          ملاحظة: يمكنك تغيير صوت القارئ من القائمة الجانبية الرئيسية.
+        </p>
+        <button id="listenGo" class="primary-btn" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+          استماع
+        </button>
+      </div>
+
     </div>
   </aside>
-  <div class="loading-overlay" id="loadingOverlay" aria-live="polite" aria-busy="true">
-    <div class="loading-card">
-      <div class="loading-emblem"><span>۞</span></div>
-      <h2 id="loadingTitle">جاري الانتقال</h2>
-      <p id="loadingMessage">يتم تجهيز صفحة المصحف</p>
-      <div class="loading-line"><i id="loadingProgress"></i></div>
-      <div class="loading-meta"><span id="loadingPercent">٠٪</span><span id="loadingEta">يرجى الانتظار</span></div>
+
+  <!-- ============ مشغل الصوت ============ -->
+  <div id="player" class="player" hidden>
+    <div class="player-top">
+      <div class="player-info">
+        <strong id="playerTitle">—</strong>
+        <span id="playerReciter"></span>
+      </div>
+      <button id="playerClose" class="icon-btn small" type="button" aria-label="إيقاف وإغلاق">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="progress">
+      <span id="timeCur" class="time">٠:٠٠</span>
+      <input id="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="شريط التقدم">
+      <span id="timeDur" class="time">٠:٠٠</span>
+    </div>
+    <div class="controls">
+      <button id="pPrev" class="ctl" type="button" aria-label="الآية السابقة">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 5v14M6 5l9 7-9 7z"/></svg>
+      </button>
+      <button id="pBack" class="ctl" type="button" aria-label="ترجيع ٥ ثوانٍ">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 11-2.4-5.7M20 4v4h-4"/><text x="12" y="15.5" text-anchor="middle" font-size="7.5" font-family="sans-serif" stroke="none" fill="currentColor">5</text></svg>
+      </button>
+      <button id="pPlay" class="ctl play" type="button" aria-label="تشغيل">
+        <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+        <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>
+        <span class="i-load spinner"></span>
+      </button>
+      <button id="pFwd" class="ctl" type="button" aria-label="تقديم ٥ ثوانٍ">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 102.4-5.7M4 4v4h4"/><text x="12" y="15.5" text-anchor="middle" font-size="7.5" font-family="sans-serif" stroke="none" fill="currentColor">5</text></svg>
+      </button>
+      <button id="pNext" class="ctl" type="button" aria-label="الآية التالية">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5v14M18 5l-9 7 9 7z"/></svg>
+      </button>
     </div>
   </div>
-  <div class="toast" id="toast" role="status"></div>
-  <div id="audioPlayer" class="audio-player hidden" aria-live="polite">
-    <button id="audioClose" class="audio-close" aria-label="إيقاف وإغلاق">×</button>
-    <div class="audio-info"><strong id="audioTitle">الحصري المعلّم</strong><small id="audioAyahLabel">—</small></div>
-    <button id="skipForward" class="audio-skip" aria-label="الآية التالية">↶</button>
-    <button id="audioToggle" class="audio-toggle" aria-label="إيقاف مؤقت">❚❚</button>
-    <button id="skipBack" class="audio-skip" aria-label="الآية السابقة">↷</button>
-    <div class="audio-progress"><i id="audioProgress"></i></div>
-  </div>
-  <audio id="quranAudio" preload="none"></audio>
-  <audio id="memorizationAudio" preload="none"></audio>
-  <link rel="stylesheet" href="reader-layout-fix.css?v=20260912-layout-3" />
-  <link rel="stylesheet" href="memorization.css?v=20260914-session-ui-2" />
-  <link rel="stylesheet" href="memorization-ui-fix.css?v=20260923-quran-wide-1" />
-  <script src="page-map.js?v=20260911-ayah-map-3"></script>
-  <script src="app.js?v=20260914-memorization-data-2"></script>
-  <script src="app-config.js?v=20260915-asr-url-1"></script>
-  <script type="module" src="firebase-auth.js?v=20260915-anonymous-auth-1"></script>
-  <script src="memorization-word-prototype.js?v=20260923-quran-wide-1"></script>
-  <script src="quran-asr-adapter.js?v=20260916-check-timeout-1"></script>
-<script src="quran-asr-live.js?v=20260923-quran-wide-1"></script>
-<script src="memorization.js?v=20260923-quran-wide-1"></script>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="js/reciters.js"></script>
+  <script src="js/app.js"></script>
 </body>
 </html>

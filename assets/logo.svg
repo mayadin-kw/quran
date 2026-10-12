@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="شعار القرآن الكريم">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f3dc9a"/>
+      <stop offset=".5" stop-color="#d4ac4f"/>
+      <stop offset="1" stop-color="#a87f2c"/>
+    </linearGradient>
+  </defs>
+  <!-- eight-pointed star (rub el hizb) -->
+  <g fill="none" stroke="url(#g)" stroke-width="4" stroke-linejoin="round">
+    <rect x="38" y="38" width="124" height="124" rx="6"/>
+    <rect x="38" y="38" width="124" height="124" rx="6" transform="rotate(45 100 100)"/>
+  </g>
+  <circle cx="100" cy="100" r="56" fill="#0b3d30" stroke="url(#g)" stroke-width="2.5"/>
+  <circle cx="100" cy="100" r="50" fill="none" stroke="url(#g)" stroke-width="1" stroke-dasharray="2 4"/>
+  <!-- open mushaf -->
+  <g stroke="url(#g)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M100 82c-10-7-22-9-34-7v40c12-2 24 0 34 7z" fill="#0b3d30"/>
+    <path d="M100 82c10-7 22-9 34-7v40c-12-2-24 0-34 7z" fill="#0b3d30"/>
+    <path d="M100 82v40" />
+  </g>
+  <g stroke="#e9cf86" stroke-width="2" stroke-linecap="round" opacity=".85">
+    <path d="M74 88c7-1 13 0 19 3M74 96c7-1 13 0 19 3M74 104c7-1 13 0 19 3"/>
+    <path d="M126 88c-7-1-13 0-19 3M126 96c-7-1-13 0-19 3M126 104c-7-1-13 0-19 3"/>
+  </g>
+  <!-- stand -->
+  <path d="M78 134l22-8 22 8M84 140l16-6 16 6" fill="none" stroke="url(#g)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="100" cy="66" r="3.5" fill="url(#g)"/>
+</svg>

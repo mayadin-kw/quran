@@ -1,8 +1,0 @@
-[
-  {
-    "origin": ["https://mayadin-kw.github.io", "https://yadin-kw.github.io"],
-    "method": ["GET", "HEAD"],
-    "responseHeader": ["Content-Type", "Cache-Control"],
-    "maxAgeSeconds": 3600
-  }
-]
