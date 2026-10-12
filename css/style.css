@@ -867,3 +867,4 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
 
 .drawer { visibility: hidden; transition: transform .3s cubic-bezier(.2, .8, .2, 1), visibility 0s .3s; }
 .drawer.open { visibility: visible; transition: transform .3s cubic-bezier(.2, .8, .2, 1); }
+.drawer.instant { transition: none; }

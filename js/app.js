@@ -663,7 +663,14 @@
     els.menuBtn.setAttribute('aria-expanded', 'true');
     els.scrim.hidden = false;
   }
-  function closeDrawer() {
+  // instant: إغلاق فوري بلا حركة انزلاق — عند الانتقال لصفحة أو بدء التشغيل،
+  // لأن إعادة رسم الصفحة تجمّد الحركة في الجوال فيظهر الدرج فارغاً فوق المشغّل.
+  function closeDrawer(instant = false) {
+    if (instant === true) {
+      els.drawer.classList.add('instant');
+      void els.drawer.offsetWidth;
+      requestAnimationFrame(() => requestAnimationFrame(() => els.drawer.classList.remove('instant')));
+    }
     els.drawer.classList.remove('open');
     els.drawer.setAttribute('aria-hidden', 'true');
     els.menuBtn.setAttribute('aria-expanded', 'false');
@@ -706,7 +713,7 @@
 
   $('#jumpGo').addEventListener('click', () => {
     const p = +els.jumpPage.value;
-    closeDrawer();
+    closeDrawer(true);
     clearSelection();
     goTo(p, { animate: Math.abs(p - current) === 1 });
   });
@@ -739,7 +746,7 @@
     const count = Q.surahs[s - 1].count;
     const from = rangeMode === 'part' ? +els.listenFrom.value : 1;
     const to = rangeMode === 'part' ? +els.listenTo.value : count;
-    closeDrawer();
+    closeDrawer(true);
     player.playRange(s, from, to, els.withTafsir.checked);
   });
 
@@ -857,7 +864,7 @@
     const b = e.target.closest('.result');
     if (!b) return;
     const r = lastResults[+b.dataset.k];
-    closeDrawer();
+    closeDrawer(true);
     sel = null;
     await goTo(Q.ayat[r.i][2]);
     await loadPageFont(current);
