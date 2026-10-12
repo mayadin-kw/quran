@@ -995,7 +995,7 @@
     }
     function setState(state) {
       els.player.classList.toggle('playing', state === 'playing');
-      els.player.classList.toggle('loading', state === 'loading');
+      els.player.classList.toggle('is-loading', state === 'loading');
     }
 
     function setButtons() {

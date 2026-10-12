@@ -817,8 +817,8 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
 .ctl.play .i-pause, .ctl.play .i-load { display: none; }
 .player.playing .ctl.play .i-play { display: none; }
 .player.playing .ctl.play .i-pause { display: block; }
-.player.loading .ctl.play svg { display: none; }
-.player.loading .ctl.play .i-load { display: block; }
+.player.is-loading .ctl.play svg { display: none; }
+.player.is-loading .ctl.play .i-load { display: block; }
 
 /* ================= عناصر عامة ================= */
 .spinner {
