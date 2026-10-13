@@ -865,6 +865,197 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
+/* ================= التسميع ================= */
+.home-inner .start-btn + .start-btn { margin-top: 14px; }
+.start-btn.alt {
+  background: rgba(255, 255, 255, .08);
+  color: var(--gold-soft);
+  border-color: rgba(232, 211, 155, .55);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .25);
+}
+.start-btn.alt:hover { background: rgba(255, 255, 255, .14); }
+
+.ts-view { display: flex; flex-direction: column; background: var(--surface-2); }
+.topbar-spacer { width: 44px; flex: none; }
+.ts-body {
+  flex: 1;
+  overflow-y: auto;
+  width: 100%;
+  max-width: 540px;
+  margin: 0 auto;
+  padding: 20px 16px calc(28px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.ts-card {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 2px 10px rgba(7, 42, 33, .05);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.ts-range { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ts-mic-row { flex-direction: row; align-items: center; justify-content: space-between; gap: 14px; }
+.ts-mic-row strong { display: block; font-size: 16px; }
+.ts-mic-row span { display: block; margin-top: 3px; font-size: 13px; color: var(--muted); line-height: 1.6; }
+.ts-start { margin-top: 4px; }
+.ts-start:disabled { opacity: .45; pointer-events: none; filter: grayscale(.4); }
+
+/* مفتاح بنمط إعدادات الآيفون */
+.switch { position: relative; flex: none; width: 51px; height: 31px; }
+.switch input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; z-index: 1; }
+.switch .slider {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: #e9e9eb;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .06);
+  transition: background .25s;
+}
+.switch .slider::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, .15), 0 3px 1px rgba(0, 0, 0, .06);
+  transition: transform .25s cubic-bezier(.3, .7, .4, 1);
+}
+.switch input:checked + .slider { background: #34c759; }
+.switch input:checked + .slider::after { transform: translateX(-20px); }
+.switch input:focus-visible + .slider { outline: 2px solid var(--gold); outline-offset: 2px; }
+@media (prefers-color-scheme: dark) { .switch .slider { background: #39393d; } }
+
+/* صفحة المصحف أثناء التسميع: الكلمات مخفية، وتظهر كلما قُرئت صحيحة */
+.reader.tasmee .page-arrow { display: none; }
+.reader.tasmee .w:not(.end) { color: transparent; transition: color .25s; border-radius: calc(var(--f) * .2); }
+.reader.tasmee .w.t-ok { color: var(--ink); animation: ts-reveal .35s ease-out both; }
+.reader.tasmee .w.t-wrong { background: rgba(220, 38, 38, .14); box-shadow: inset 0 0 0 1.5px rgba(220, 38, 38, .65); }
+.reader.tasmee .w.t-red { color: #c62828; animation: ts-reveal .35s ease-out both; }
+.reader.tasmee .w.t-again { background: rgba(37, 99, 235, .1); box-shadow: inset 0 0 0 1.5px rgba(37, 99, 235, .45); }
+@media (prefers-color-scheme: dark) { .reader.tasmee .w.t-red { color: #f87171; } }
+@keyframes ts-reveal { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+
+.ts-bar {
+  position: fixed;
+  z-index: 15;
+  left: 50%;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  width: min(560px, calc(100% - 20px));
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #fff;
+  background: linear-gradient(180deg, rgba(15, 77, 61, .97), rgba(7, 42, 33, .98));
+  border: 1px solid rgba(201, 162, 74, .5);
+  border-radius: 22px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .35);
+  transform: translateX(-50%);
+  animation: playerIn .3s cubic-bezier(.2, .8, .2, 1) both;
+}
+.ts-live-mic {
+  position: relative;
+  flex: none;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--green-950);
+  background: linear-gradient(180deg, #f1d88e, var(--gold));
+}
+.ts-live-mic::before, .ts-live-mic::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--gold);
+  animation: ts-pulse 1.8s ease-out infinite;
+}
+.ts-live-mic::after { animation-delay: .9s; }
+.ts-live-mic svg { width: 24px; height: 24px; }
+@keyframes ts-pulse { from { transform: scale(1); opacity: .8; } to { transform: scale(1.7); opacity: 0; } }
+.ts-live { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.4; }
+.ts-live strong { font-size: 14px; color: var(--gold-soft); }
+.ts-live span { font-size: 13px; color: rgba(255, 255, 255, .72); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ts-end {
+  flex: none;
+  padding: 9px 16px;
+  border: 1px solid rgba(255, 255, 255, .25);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .08);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+}
+.ts-end:hover { background: rgba(255, 255, 255, .16); }
+
+/* تقرير التسميع */
+.tsr-score { flex-direction: row; align-items: center; gap: 18px; }
+.tsr-ring {
+  --p: 0;
+  flex: none;
+  width: 104px;
+  height: 104px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: conic-gradient(var(--gold) calc(var(--p) * 1%), var(--line) 0);
+}
+.tsr-ring b {
+  width: 84px;
+  height: 84px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--surface);
+  font-size: 24px;
+  color: var(--green-800);
+}
+@media (prefers-color-scheme: dark) { .tsr-ring b { color: var(--gold-soft); } }
+.tsr-score h2 { margin: 0 0 4px; font-family: var(--font-deco); font-size: 22px; color: var(--green-800); }
+@media (prefers-color-scheme: dark) { .tsr-score h2 { color: var(--gold); } }
+.tsr-score p { margin: 0; font-size: 14px; color: var(--muted); line-height: 1.7; }
+.tsr-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.tsr-stat {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tsr-stat b { font-size: 22px; }
+.tsr-stat span { font-size: 13px; color: var(--muted); }
+.tsr-stat.good b { color: #15803d; }
+.tsr-stat.bad b { color: #c62828; }
+.tsr-stat.blue b { color: #1d4ed8; }
+@media (prefers-color-scheme: dark) {
+  .tsr-stat.good b { color: #4ade80; }
+  .tsr-stat.bad b { color: #f87171; }
+  .tsr-stat.blue b { color: #93c5fd; }
+}
+.tsr-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.tsr-list li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.tsr-list li:last-child { border-bottom: 0; }
+.tsr-word { font-family: var(--font-quran); font-size: 22px; line-height: 1.6; }
+.tsr-meta { font-size: 12px; color: var(--muted); text-align: left; }
+.tsr-tag { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: rgba(220, 38, 38, .1); color: #b91c1c; }
+.tsr-tag.skip { background: rgba(234, 88, 12, .12); color: #c2410c; }
+.tsr-tag.fix { background: rgba(202, 138, 4, .14); color: #a16207; }
+.ts-card h3 { margin: 0; font-size: 16px; }
+.tsr-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tsr-actions .primary-btn.ghost { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }

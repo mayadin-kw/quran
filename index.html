@@ -24,7 +24,67 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6c-2.2-1.5-5-2-8-1.6v13c3-.4 5.8.1 8 1.6 2.2-1.5 5-2 8-1.6v-13c-3-.4-5.8.1-8 1.6zM12 6v13"/></svg>
         <span>القراءة والإستماع</span>
       </button>
+      <button id="tasmeeBtn" class="start-btn alt" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg>
+        <span>التسميع</span>
+      </button>
     </div>
+  </section>
+
+  <!-- ============ إعدادات التسميع ============ -->
+  <section id="tasmeeSetup" class="view ts-view" aria-label="إعدادات التسميع" hidden>
+    <header class="topbar">
+      <span class="topbar-spacer"></span>
+      <div class="topbar-title"><strong>التسميع</strong><span>اختبر حفظك بصوتك</span></div>
+      <button class="icon-btn" type="button" data-ts-home aria-label="رجوع">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+    </header>
+    <div class="ts-body">
+      <div class="ts-card">
+        <label class="field">
+          <span class="field-label">السورة</span>
+          <select id="tsSurah"></select>
+        </label>
+        <div class="ts-range">
+          <label class="field">
+            <span class="field-label">من الآية</span>
+            <select id="tsFrom"></select>
+          </label>
+          <label class="field">
+            <span class="field-label">إلى الآية</span>
+            <select id="tsTo"></select>
+          </label>
+        </div>
+      </div>
+      <div class="ts-card ts-mic-row">
+        <div>
+          <strong>تفعيل المايكروفون</strong>
+          <span id="tsMicHint">يسمع الموقع تلاوتك ويُظهر الكلمات كلما قرأتها صحيحة</span>
+        </div>
+        <label class="switch">
+          <input id="tsMic" type="checkbox" role="switch" aria-label="تفعيل المايكروفون">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <p id="tsSupport" class="note" hidden></p>
+      <button id="tsStart" class="primary-btn ts-start" type="button" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+        بدء التسميع
+      </button>
+    </div>
+  </section>
+
+  <!-- ============ تقرير التسميع ============ -->
+  <section id="tasmeeReport" class="view ts-view" aria-label="تقرير التسميع" hidden>
+    <header class="topbar">
+      <span class="topbar-spacer"></span>
+      <div class="topbar-title"><strong>تقرير التسميع</strong><span id="tsrRange"></span></div>
+      <button class="icon-btn" type="button" data-ts-home aria-label="رجوع">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+    </header>
+    <div class="ts-body" id="tsrBody"></div>
   </section>
 
   <!-- ============ القارئ ============ -->
@@ -52,6 +112,17 @@
     </button>
 
     <div id="loading" class="loading"><span class="spinner"></span><span>جارٍ تحميل المصحف…</span></div>
+
+    <div id="tsBar" class="ts-bar" hidden>
+      <div class="ts-live-mic" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg>
+      </div>
+      <div class="ts-live">
+        <strong id="tsProgress"></strong>
+        <span id="tsHeard">ابدأ القراءة…</span>
+      </div>
+      <button id="tsEnd" class="ts-end" type="button">إنهاء</button>
+    </div>
   </section>
 
   <!-- ============ القائمة الجانبية ============ -->

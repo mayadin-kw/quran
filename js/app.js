@@ -33,6 +33,7 @@
     withTafsir: $('#withTafsir'),
     player: $('#player'), toast: $('#toast'),
     navPrev: $('#navPrev'), navNext: $('#navNext'),
+    tsSetup: $('#tasmeeSetup'), tsReport: $('#tasmeeReport'), tsBar: $('#tsBar'),
   };
 
   function toast(msg, ms = 2200) {
@@ -111,6 +112,8 @@
 
   async function showReader() {
     els.home.hidden = true;
+    els.tsSetup.hidden = true;
+    els.tsReport.hidden = true;
     els.reader.hidden = false;
     if (built) { layoutAll(); return; }
     els.loading.hidden = false;
@@ -134,11 +137,17 @@
     closeDrawer();
     clearSelection();
     els.reader.hidden = true;
+    els.tsSetup.hidden = true;
+    els.tsReport.hidden = true;
     els.home.hidden = false;
   }
 
   function route() {
+    if (ts && location.hash !== '#tasmee-run') tsStop();
     if (location.hash === '#read') showReader();
+    else if (location.hash === '#tasmee') showTasmeeSetup();
+    else if (location.hash === '#tasmee-report' && tsLast) showTasmeeReport();
+    else if (location.hash.startsWith('#tasmee')) { history.replaceState(null, '', '#tasmee'); showTasmeeSetup(); }
     else showHome();
   }
 
@@ -147,6 +156,7 @@
     showReader();
   });
   $('#backBtn').addEventListener('click', () => {
+    if (ts) { tsFinish(); return; }
     if (history.state && history.state.reader) history.back();
     else { history.replaceState(null, '', location.pathname + location.search); showHome(); }
   });
@@ -257,7 +267,8 @@
   function fitTransform() {
     const h = els.pager.clientHeight;
     const pageH = f * PAGE_H + 8;
-    const playerH = els.player.hidden ? 0 : els.player.offsetHeight + 18;
+    const bar = !els.player.hidden ? els.player : !els.tsBar.hidden ? els.tsBar : null;
+    const playerH = bar ? bar.offsetHeight + 18 : 0;
     const avail = h - playerH - 8;
     const s = Math.min(1, avail / pageH);
     const ty = Math.max(4, (avail - pageH * s) / 2 + 4);
@@ -456,6 +467,7 @@
       const b = $(`.basmala[data-s="${playingBasmala}"]`, page);
       if (b) b.classList.add('playing');
     }
+    if (ts) tsPaint(page);
   }
   const redrawMarks = () => Object.values(panes).forEach(drawMarks);
 
@@ -473,7 +485,7 @@
   }
 
   els.pager.addEventListener('click', (e) => {
-    if (suppressClick || !built) return;
+    if (suppressClick || !built || ts) return;
     if (e.target.closest('.pop, .page-arrow')) return;
     // إذا كانت هناك آية محددة: أي ضغطة تلغي التحديد فقط
     if (sel || pop) { clearSelection(); return; }
@@ -777,9 +789,11 @@
     .replace(/\s+/g, ' ').trim();
 
   let searchIndex = null;
+  let searchLines = null; // النص الإملائي لكل آية، كلماته بنفس ترتيب كلمات المصحف (والكلمة المركبة تُفصل بـ _)
   let searchPromise = null;
   function loadSearch() {
     return (searchPromise ||= Promise.all([loadData(), fetch('data/search.json').then((r) => r.json())]).then(([, lines]) => {
+      searchLines = lines;
       searchIndex = lines.map((line) => {
         let str = '';
         const starts = [];
@@ -1167,10 +1181,392 @@
     return api;
   })();
 
+  /* ================= التسميع ================= */
+  // يُخفي كلمات المقطع المختار، ويستمع للتلاوة عبر التعرف على الكلام في المتصفح (Web Speech API)،
+  // ويُظهر كل كلمة تُقرأ صحيحة. الكلمة الخاطئة: مربع أحمر مكانها، وبعد ٣ محاولات تظهر بالأحمر.
+  // إعادة قراءة كلمات ظاهرة: إطار أزرق خفيف. وفي النهاية تقرير مفصل.
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const ts$ = {
+    surah: $('#tsSurah'), from: $('#tsFrom'), to: $('#tsTo'), mic: $('#tsMic'), start: $('#tsStart'),
+    support: $('#tsSupport'), progress: $('#tsProgress'), heard: $('#tsHeard'), rBody: $('#tsrBody'), rRange: $('#tsrRange'),
+  };
+  let ts = null;      // جلسة التسميع الجارية
+  let tsLast = null;  // آخر جلسة منتهية (للتقرير وإعادة التسميع)
+  const MAX_TRIES = 3;
+
+  // الاستعاذة والبسملة قبل البدء لا تُحسب أخطاء
+  const TS_PREAMBLE = new Set(normalize('اعوذ بالله من الشيطان الرجيم بسم الله الرحمن الرحيم').split(' '));
+  // الحروف المقطعة تُنطق بأسمائها
+  const LETTER_NAMES = { ا: 'الف', ل: 'لام', م: 'ميم', ر: 'را', ص: 'صاد', ك: 'كاف', ه: 'ها', ي: 'يا', ع: 'عين', ط: 'طا', س: 'سين', ح: 'حا', ق: 'قاف', ن: 'نون' };
+  const MUQATTAAT = new Set(['الم', 'المص', 'الر', 'المر', 'كهيعص', 'طه', 'طسم', 'طس', 'يس', 'ص', 'حم', 'عسق', 'ق', 'ن']);
+
+  const tsClean = (s) => normalize(s).replace(/[^ء-ي\s]/g, ' ').replace(/ء/g, '').replace(/\s+/g, ' ').trim();
+
+  function lev(a, b) {
+    if (a === b) return 0;
+    let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+    for (let x = 1; x <= a.length; x++) {
+      const cur = [x];
+      for (let y = 1; y <= b.length; y++) cur[y] = Math.min(prev[y] + 1, cur[y - 1] + 1, prev[y - 1] + (a[x - 1] === b[y - 1] ? 0 : 1));
+      prev = cur;
+    }
+    return prev[b.length];
+  }
+  // تطابق كلمتين مع تسامح بسيط مع اختلافات الإملاء والتعرّف
+  function tsSame(a, b) {
+    if (!a || !b) return false;
+    if (a === b) return true;
+    const L = Math.max(a.length, b.length);
+    if (L < 4) return false;
+    return lev(a, b) <= (L >= 8 ? 2 : 1);
+  }
+
+  // كلمات المقطع: لكل كلمة من المصحف طرق نطقها المقبولة (مصفوفات كلمات منطوقة)
+  function tsWords(s, from, to) {
+    const words = [];
+    for (let a = from; a <= to; a++) {
+      const i = surahStart[s] + a - 1;
+      searchLines[i].split(' ').forEach((w, k) => {
+        const pieces = w.split('_').map(tsClean).filter(Boolean);
+        const alts = [pieces];
+        if (k === 0 && MUQATTAAT.has(pieces.join('')) && (a === 1 || (s === 42 && a === 2))) {
+          alts.push([...pieces.join('')].map((c) => LETTER_NAMES[c]).filter(Boolean));
+        }
+        words.push({ i, k, alts, state: 'hidden', tries: 0, heard: [] });
+      });
+    }
+    return words;
+  }
+
+  // كم كلمة منطوقة (ابتداءً من t) تطابق كلمة المصحف رقم p؟ ٠ = لا تطابق
+  function tsMatch(tokens, t, p) {
+    const w = ts.words[p];
+    if (!w || t >= tokens.length) return 0;
+    for (const alt of w.alts) {
+      if (alt.length && alt.every((piece, j) => tsSame(tokens[t + j], piece))) return alt.length;
+      const joined = alt.join('');
+      if (alt.length > 1 && tsSame(tokens[t], joined)) return 1;              // المتعرّف دمج كلمتين
+      if (t + 1 < tokens.length && tsSame(tokens[t] + tokens[t + 1], joined)) return 2; // أو قسّم كلمة
+    }
+    return 0;
+  }
+
+  function tsStep(tokens, t, final) {
+    const p = ts.ptr;
+    let n = tsMatch(tokens, t, p);
+    if (n) { tsReveal(p); return t + n; }
+    // متابعة إعادة قراءة بدأت
+    if (ts.againAt >= 0 && ts.againAt + 1 < p && (n = tsMatch(tokens, t, ts.againAt + 1))) { tsAgain(ts.againAt + 1); return t + n; }
+    if (!final) return -1; // النتائج المؤقتة تُستعمل للإظهار السريع فقط، والأخطاء تُحسب من النتائج النهائية
+    if (!ts.started && TS_PREAMBLE.has(tokens[t])) return t + 1;
+    // تخطّى كلمة أو كلمتين (نسيان)
+    for (let d = 1; d <= 3 && p + d < ts.words.length; d++) {
+      n = tsMatch(tokens, t, p + d);
+      if (n && (tokens[t].length >= 4 || tsMatch(tokens, t + n, p + d + 1))) {
+        for (let q = p; q < p + d; q++) tsMiss(q, 'skip');
+        tsReveal(p + d);
+        return t + n;
+      }
+    }
+    // يعيد قراءة كلمات سبق أن ظهرت
+    for (let q = p - 1; q >= Math.max(0, p - 40); q--) {
+      n = tsMatch(tokens, t, q);
+      if (n && (tokens[t].length >= 3 || tsMatch(tokens, t + n, q + 1))) { tsAgain(q); return t + n; }
+    }
+    tsWrong(p, tokens[t]);
+    return t + 1;
+  }
+
+  function tsReveal(p) {
+    const w = ts.words[p];
+    if (w.tries) ts.mistakes.push({ p, type: 'fix' });
+    w.state = 'ok';
+    ts.ptr = p + 1;
+    tsBegin();
+    ts.started = true;
+    tsEndAgain();
+    tsUpdate();
+  }
+  function tsBegin() {
+    if (!ts.t0) ts.t0 = Date.now();
+  }
+  function tsWrong(p, heard) {
+    const w = ts.words[p];
+    tsBegin();
+    w.tries++;
+    w.heard.push(heard);
+    w.state = 'wrong';
+    if (w.tries >= MAX_TRIES) {
+      tsMiss(p, 'forced');
+      ts.ptr = p + 1;
+    }
+    tsEndAgain();
+    tsUpdate();
+  }
+  function tsMiss(p, type) {
+    ts.words[p].state = 'red';
+    ts.mistakes.push({ p, type });
+  }
+  function tsAgain(q) {
+    if (ts.againAt < 0) ts.rereads++;
+    ts.againAt = q;
+    ts.again.add(q);
+    tsUpdate(false);
+  }
+  function tsEndAgain() {
+    ts.againAt = -1;
+    ts.again.clear();
+  }
+
+  // يلوّن كلمات الصفحة حسب حالتها
+  function tsPaint(page) {
+    $$('.w:not(.end)', page).forEach((el) => {
+      const p = ts.index.get(`${el.dataset.i}:${el.dataset.k}`);
+      const w = p === undefined ? null : ts.words[p];
+      el.classList.toggle('t-ok', !!w && w.state === 'ok');
+      el.classList.toggle('t-wrong', !!w && w.state === 'wrong');
+      el.classList.toggle('t-red', !!w && w.state === 'red');
+      el.classList.toggle('t-again', p !== undefined && ts.again.has(p));
+    });
+  }
+
+  function tsUpdate(follow = true) {
+    Object.values(panes).forEach((pane) => pane.firstElementChild && tsPaint(pane.firstElementChild));
+    const done = Math.min(ts.ptr, ts.words.length);
+    ts$.progress.textContent = `${ar(done)} / ${ar(ts.words.length)} كلمة`;
+    if (ts.ptr >= ts.words.length) { setTimeout(() => ts && tsFinish(), 900); return; }
+    if (follow) {
+      const page = Q.ayat[ts.words[ts.ptr].i][2];
+      if (page !== current && !animating) goTo(page, { animate: Math.abs(page - current) === 1 });
+    }
+  }
+
+  // نص التعرّف الحالي ككلمات، وعدد الكلمات النهائية منها.
+  // كروم أندرويد يعيد أحياناً كل النص السابق في كل نتيجة جديدة، فتُستعمل آخر نتيجة فقط حينها.
+  function tsTokens(results) {
+    const list = [...results].map((r) => ({ words: tsClean(r[0].transcript).split(' ').filter(Boolean), final: r.isFinal }));
+    const cumulative = list.length > 1 && list.every((r, k) => !k || r.words.join(' ').startsWith(list[k - 1].words.join(' ')));
+    const use = cumulative ? [list[list.length - 1]] : list;
+    const tokens = [];
+    let finalCount = 0;
+    use.forEach((r) => { tokens.push(...r.words); if (r.final) finalCount = tokens.length; });
+    return { tokens, finalCount };
+  }
+
+  function tsListen() {
+    const rec = new SpeechRec();
+    rec.lang = 'ar-SA';
+    rec.continuous = true;
+    rec.interimResults = true;
+    let consumed = 0;
+    rec.onresult = (e) => {
+      if (!ts || ts.rec !== rec) return;
+      const { tokens, finalCount } = tsTokens(e.results);
+      if (tokens.length) ts$.heard.textContent = tokens.slice(-7).join(' ');
+      if (!ts.ready) return;
+      let t = consumed;
+      while (ts && t < tokens.length && ts.ptr < ts.words.length) {
+        const next = tsStep(tokens, t, t < finalCount);
+        if (next < 0) break;
+        t = next;
+      }
+      consumed = Math.max(consumed, t);
+    };
+    rec.onerror = (e) => {
+      if (!ts || ts.rec !== rec) return;
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        toast('لم يُسمح باستخدام المايكروفون. اسمح به من إعدادات المتصفح ثم أعد المحاولة', 5000);
+        ts.running = false;
+      } else if (e.error === 'network') {
+        toast('التسميع يحتاج اتصالاً بالإنترنت', 3500);
+      }
+    };
+    // المتصفح يوقف الاستماع بعد فترة صمت؛ نعيد تشغيله ما دامت الجلسة قائمة
+    rec.onend = () => {
+      if (ts && ts.rec === rec && ts.running) setTimeout(() => { if (ts && ts.rec === rec && ts.running) tsListen(); }, 250);
+    };
+    if (ts) ts.rec = rec;
+    try { rec.start(); } catch { /* يبدأ في المحاولة التالية */ }
+  }
+
+  async function tsStart(s, from, to) {
+    tsStop();
+    ts = { s, from, to, words: [], index: new Map(), ptr: 0, againAt: -1, again: new Set(), rereads: 0, mistakes: [],
+      started: false, ready: false, running: true, t0: 0, rec: null };
+    tsListen(); // داخل ضغطة المستخدم حتى يسمح المتصفح بالمايكروفون
+    els.reader.classList.add('tasmee');
+    els.menuBtn.hidden = true;
+    player.close();
+    els.tsBar.hidden = false;
+    ts$.heard.textContent = 'ابدأ القراءة…';
+    await Promise.all([showReader(), loadSearch()]);
+    if (!ts) return;
+    ts.words = tsWords(s, from, to);
+    ts.words.forEach((w, p) => ts.index.set(`${w.i}:${w.k}`, p));
+    ts.ready = true;
+    const page = Q.ayat[surahStart[s] + from - 1][2];
+    clearSelection();
+    await goTo(page);
+    layoutAll();
+    tsUpdate(false);
+  }
+
+  function tsStop() {
+    if (!ts) return;
+    ts.running = false;
+    try { ts.rec && ts.rec.abort(); } catch { /* تم إيقافه */ }
+    ts = null;
+    els.reader.classList.remove('tasmee');
+    els.menuBtn.hidden = false;
+    els.tsBar.hidden = true;
+    redrawMarks();
+    if (built) layoutAll();
+  }
+
+  function tsFinish() {
+    if (!ts) return;
+    const session = ts;
+    session.t1 = Date.now();
+    tsLast = session;
+    tsStop();
+    history.replaceState({ tasmee: true }, '', '#tasmee-report');
+    showTasmeeReport();
+  }
+
+  /* ---- صفحة الإعدادات ---- */
+  let tsFilled = false;
+  async function showTasmeeSetup() {
+    els.home.hidden = true;
+    els.reader.hidden = true;
+    els.tsReport.hidden = true;
+    els.tsSetup.hidden = false;
+    if (!SpeechRec) {
+      ts$.support.hidden = false;
+      ts$.support.textContent = 'متصفحك لا يدعم التعرف على الكلام. استخدم Google Chrome أو Safari على الجوال أو الكمبيوتر.';
+    }
+    try { await Promise.all([loadData(), loadSearch()]); } catch { toast('تعذّر تحميل البيانات، تحقق من الاتصال'); return; }
+    if (!tsFilled) {
+      tsFilled = true;
+      Q.surahs.forEach((x) => ts$.surah.appendChild(option(x.n, `${ar(x.n)}. سورة ${x.name}`)));
+      let saved = null;
+      try { saved = JSON.parse(store.get('q.ts', 'null')); } catch { /* إعداد قديم أو تالف */ }
+      ts$.surah.value = saved && Q.surahs[saved.s - 1] ? saved.s : 1;
+      tsFillAyat();
+      if (saved && +ts$.surah.value === saved.s && saved.to <= Q.surahs[saved.s - 1].count) { ts$.from.value = saved.from; ts$.to.value = saved.to; }
+    }
+  }
+  function tsFillAyat() {
+    const count = Q.surahs[ts$.surah.value - 1].count;
+    [ts$.from, ts$.to].forEach((sel) => {
+      sel.textContent = '';
+      for (let a = 1; a <= count; a++) sel.appendChild(option(a, ar(a)));
+    });
+    ts$.from.value = 1;
+    ts$.to.value = count;
+  }
+  ts$.surah.addEventListener('change', tsFillAyat);
+  ts$.from.addEventListener('change', () => { if (+ts$.to.value < +ts$.from.value) ts$.to.value = ts$.from.value; });
+  ts$.to.addEventListener('change', () => { if (+ts$.to.value < +ts$.from.value) ts$.from.value = ts$.to.value; });
+
+  ts$.mic.addEventListener('change', async () => {
+    ts$.start.disabled = true;
+    if (!ts$.mic.checked) return;
+    if (!SpeechRec) { ts$.mic.checked = false; toast('متصفحك لا يدعم التعرف على الكلام'); return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((tr) => tr.stop());
+      ts$.start.disabled = false;
+    } catch {
+      ts$.mic.checked = false;
+      toast('لم يُسمح باستخدام المايكروفون. اسمح به من إعدادات المتصفح', 4000);
+    }
+  });
+
+  ts$.start.addEventListener('click', () => {
+    const s = +ts$.surah.value;
+    const from = +ts$.from.value;
+    const to = +ts$.to.value;
+    store.set('q.ts', JSON.stringify({ s, from, to }));
+    history.pushState({ tasmee: true }, '', '#tasmee-run');
+    tsStart(s, from, to);
+  });
+  $('#tsEnd').addEventListener('click', tsFinish);
+  $('#tasmeeBtn').addEventListener('click', () => {
+    history.pushState({ tasmee: true }, '', '#tasmee');
+    showTasmeeSetup();
+  });
+  $$('[data-ts-home]').forEach((b) => b.addEventListener('click', () => {
+    history.replaceState(null, '', location.pathname + location.search);
+    showHome();
+  }));
+
+  /* ---- التقرير ---- */
+  function showTasmeeReport() {
+    const r = tsLast;
+    els.home.hidden = true;
+    els.reader.hidden = true;
+    els.tsSetup.hidden = true;
+    els.tsReport.hidden = false;
+    const name = Q.surahs[r.s - 1].name;
+    ts$.rRange.textContent = `سورة ${name} · الآيات ${ar(r.from)}–${ar(r.to)}`;
+    const total = r.words.length;
+    const read = Math.min(r.ptr, total);
+    const count = (type) => r.mistakes.filter((m) => m.type === type).length;
+    const fix = count('fix');
+    const forced = count('forced');
+    const skip = count('skip');
+    const clean = r.words.slice(0, read).filter((w) => w.state === 'ok' && !w.tries).length;
+    const score = read ? Math.round((clean / read) * 100) : 0;
+    const secs = r.t0 ? Math.round(((r.t1 || Date.now()) - r.t0) / 1000) : 0;
+    const mins = Math.floor(secs / 60);
+    const time = mins ? `${ar(mins)} دقيقة${secs % 60 ? ` و${ar(secs % 60)} ثانية` : ''}` : `${ar(secs)} ثانية`;
+    const verdict = !read ? 'لم تُقرأ أي كلمة' : score >= 95 ? 'ممتاز، حفظ متقن' : score >= 85 ? 'جيد جداً' : score >= 70 ? 'جيد، يحتاج مراجعة' : 'يحتاج مراجعة أكثر';
+    const stat = (v, label, cls = '') => `<div class="tsr-stat ${cls}"><b>${ar(v)}</b><span>${label}</span></div>`;
+    const tag = { fix: ['خطأ ثم صُحّح', 'fix'], forced: ['ظهرت بعد ٣ أخطاء', ''], skip: ['نسيان (تُخطيت)', 'skip'] };
+    const list = r.mistakes.slice().sort((a, b) => a.p - b.p).map((m) => {
+      const w = r.words[m.p];
+      const heard = w.heard.length ? `سُمع: ${w.heard.join('، ')}` : '';
+      return `<li><div><div class="tsr-word">${Q.ayat[w.i][7][w.k]}</div><span class="tsr-tag ${tag[m.type][1]}">${tag[m.type][0]}</span></div>
+        <div class="tsr-meta">الآية ${ar(Q.ayat[w.i][1])}${heard ? `<br>${heard}` : ''}</div></li>`;
+    }).join('');
+    ts$.rBody.innerHTML = `
+      <div class="ts-card tsr-score">
+        <div class="tsr-ring" style="--p:${score}"><b>${ar(score)}٪</b></div>
+        <div><h2>${verdict}</h2><p>قرأت ${ar(read)} من ${ar(total)} كلمة في ${time}</p></div>
+      </div>
+      <div class="tsr-stats">
+        ${stat(clean, 'كلمة صحيحة من أول مرة', 'good')}
+        ${stat(fix, 'خطأ ثم صحّحته', 'bad')}
+        ${stat(forced, 'كلمة ظهرت بعد ٣ أخطاء', 'bad')}
+        ${stat(skip, 'كلمة منسية (تخطيتها)', 'bad')}
+        ${stat(r.rereads, 'مرة أعدت فيها القراءة', 'blue')}
+        ${stat(total - read, 'كلمة لم تصل إليها')}
+      </div>
+      <div class="ts-card"><h3>مواضع الأخطاء</h3>${list ? `<ul class="tsr-list">${list}</ul>` : '<p class="note">لا توجد أخطاء، أحسنت! 🌟</p>'}</div>
+      <p class="note">أخطاء الحركات (التشكيل) لا يمكن كشفها حالياً، لأن التعرف على الكلام في المتصفح يكتب الكلمات بدون تشكيل.</p>
+      <div class="tsr-actions">
+        <button type="button" class="primary-btn" data-r="again">إعادة التسميع</button>
+        <button type="button" class="primary-btn ghost" data-r="setup">مقطع آخر</button>
+      </div>`;
+    $('[data-r="again"]', ts$.rBody).addEventListener('click', () => {
+      history.replaceState({ tasmee: true }, '', '#tasmee-run');
+      els.tsReport.hidden = true;
+      tsStart(r.s, r.from, r.to);
+    });
+    $('[data-r="setup"]', ts$.rBody).addEventListener('click', () => {
+      history.replaceState({ tasmee: true }, '', '#tasmee');
+      showTasmeeSetup();
+    });
+  }
+
   /* ================= البدء ================= */
   loadData().catch(() => {});
   if (location.hash === '#read') {
     history.replaceState({ reader: false }, '', location.href);
     showReader();
+  }
+  else if (location.hash.startsWith('#tasmee')) {
+    history.replaceState(null, '', '#tasmee');
+    showTasmeeSetup();
   }
 })();
