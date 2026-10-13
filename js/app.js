@@ -1320,7 +1320,7 @@
   function tsStep(tokens, t, final) {
     const p = ts.ptr;
     let n = tsMatch(tokens, t, p);
-    if (n) { tsReveal(p); return t + n; }
+    if (n) { tsReveal(p, n === 1 ? t : -1, tokens); return t + n; }
     // متابعة إعادة قراءة بدأت
     if (ts.againAt >= 0 && ts.againAt + 1 < p && (n = tsMatch(tokens, t, ts.againAt + 1))) { tsAgain(ts.againAt + 1); return t + n; }
     if (!final) return -1; // النتائج المؤقتة تُستعمل للإظهار السريع فقط، والأخطاء تُحسب من النتائج النهائية
@@ -1330,7 +1330,7 @@
       n = tsMatch(tokens, t, p + d);
       if (n && (tokens[t].length >= 4 || tsMatch(tokens, t + n, p + d + 1))) {
         for (let q = p; q < p + d; q++) tsMiss(q, 'skip');
-        tsReveal(p + d);
+        tsReveal(p + d, n === 1 ? t : -1, tokens);
         return t + n;
       }
     }
@@ -1343,9 +1343,20 @@
     return t + 1;
   }
 
-  function tsReveal(p) {
+  // t: موضع الكلمة المسموعة (لفحص الحركات)، أو -1 إن طابقت أكثر من كلمة مسموعة
+  function tsReveal(p, t = -1, tokens = null) {
     const w = ts.words[p];
     if (w.tries) ts.mistakes.push({ p, type: 'fix' });
+    const heard = t >= 0 && ts.cur ? ts.cur.raw[t] : '';
+    if (heard) {
+      const waqf = ts.cur.ends.has(t);
+      // الكلمة طابقت بتسامح لا حرفياً: نطقها مختلف (حرف أو حركة)، والسيرفر يكتب بدقة
+      const differs = !w.alts.some((alt) => alt.length === 1 && alt[0] === tokens[t]);
+      if (tsHarakaError(Q.ayat[w.i][7][w.k], heard, waqf) || (differs && /[\u064B-\u0652]/.test(heard))) {
+        w.haraka = heard;
+        ts.mistakes.push({ p, type: 'haraka' });
+      }
+    }
     w.state = 'ok';
     ts.ptr = p + 1;
     tsBegin();
@@ -1390,6 +1401,7 @@
       const p = ts.index.get(`${el.dataset.i}:${el.dataset.k}`);
       const w = p === undefined ? null : ts.words[p];
       el.classList.toggle('t-ok', !!w && w.state === 'ok');
+      el.classList.toggle('t-haraka', !!w && w.state === 'ok' && !!w.haraka);
       el.classList.toggle('t-wrong', !!w && w.state === 'wrong');
       el.classList.toggle('t-red', !!w && w.state === 'red');
       el.classList.toggle('t-again', p !== undefined && ts.again.has(p));
@@ -1410,13 +1422,48 @@
   // نص التعرّف الحالي ككلمات، وعدد الكلمات النهائية منها.
   // كروم أندرويد يعيد أحياناً كل النص السابق في كل نتيجة جديدة، فتُستعمل آخر نتيجة فقط حينها.
   function tsTokens(results, fromServer) {
-    const list = [...results].map((r) => ({ words: tsClean(r[0].transcript).split(' ').filter(Boolean), final: r.isFinal }));
+    const list = [...results].map((r) => {
+      const words = [];
+      const raw = [];
+      r[0].transcript.trim().split(/\s+/).forEach((rw) => {
+        const pieces = tsClean(rw).split(' ').filter(Boolean);
+        pieces.forEach((c) => { words.push(c); raw.push(pieces.length === 1 ? rw : ''); });
+      });
+      return { words, raw, final: r.isFinal };
+    });
     const cumulative = !fromServer && list.length > 1 && list.every((r, k) => !k || r.words.join(' ').startsWith(list[k - 1].words.join(' ')));
     const use = cumulative ? [list[list.length - 1]] : list;
     const tokens = [];
+    const raw = [];
+    const ends = new Set(); // آخر كلمة في كل جملة نهائية (موضع وقف)
     let finalCount = 0;
-    use.forEach((r) => { tokens.push(...r.words); if (r.final) finalCount = tokens.length; });
-    return { tokens, finalCount };
+    use.forEach((r) => {
+      tokens.push(...r.words);
+      raw.push(...r.raw);
+      if (r.final) { finalCount = tokens.length; ends.add(tokens.length - 1); }
+    });
+    return { tokens, raw, ends, finalCount };
+  }
+
+  // الحركات: تُقارن حركة كل حرف بين الرسم العثماني وما سُمع، إن كان للكلمتين نفس الحروف.
+  // يُتجاهل آخر حرف في موضع الوقف (يُسكَّن عند الوقف)، وتُتجاهل الحروف التي لا حركة لها في أحدهما.
+  const HARAKA = { '\u064E': 'a', '\u064B': 'a', '\u08F0': 'a', '\u064F': 'u', '\u064C': 'u', '\u08F1': 'u', '\u0650': 'i', '\u064D': 'i', '\u08F2': 'i' };
+  function tsLetters(word) {
+    const out = [];
+    for (const ch of word.normalize('NFC')) {
+      if (HARAKA[ch]) { if (out.length) out[out.length - 1].h = HARAKA[ch]; continue; }
+      if (/[اٱىٰـۥۦ]/.test(ch) || !/[\u0621-\u064A]/.test(ch)) continue;
+      out.push({ l: /[أإآؤئء]/.test(ch) ? 'ء' : ch === 'ة' ? 'ت' : ch, h: '' });
+    }
+    return out;
+  }
+  function tsHarakaError(expected, heard, waqf) {
+    const a = tsLetters(expected);
+    const b = tsLetters(heard);
+    if (!b.some((x) => x.h) || a.length !== b.length || a.some((x, k) => x.l !== b[k].l)) return false;
+    const last = waqf ? a.length - 1 : a.length;
+    for (let k = 0; k < last; k++) if (a[k].h && b[k].h && a[k].h !== b[k].h) return true;
+    return false;
   }
 
   function tsListen() {
@@ -1428,11 +1475,14 @@
     let consumed = 0;
     rec.onresult = (e) => {
       if (!ts || ts.rec !== rec) return;
-      const { tokens, finalCount } = tsTokens(e.results, e.server);
+      const { tokens, raw, ends, finalCount } = tsTokens(e.results, e.server);
       if (tokens.length) ts$.heard.textContent = tokens.slice(-7).join(' ');
       if (!ts.ready) return;
+      ts.cur = { raw, ends };
+      // آخر كلمة في النتيجة المؤقتة قد تكون مقطوعة: تنتظر التحديث التالي
+      const limit = finalCount === tokens.length ? tokens.length : tokens.length - 1;
       let t = consumed;
-      while (ts && t < tokens.length && ts.ptr < ts.words.length) {
+      while (ts && t < limit && ts.ptr < ts.words.length) {
         const next = tsStep(tokens, t, t < finalCount);
         if (next < 0) break;
         t = next;
@@ -1585,17 +1635,18 @@
     const fix = count('fix');
     const forced = count('forced');
     const skip = count('skip');
-    const clean = r.words.slice(0, read).filter((w) => w.state === 'ok' && !w.tries).length;
+    const haraka = count('haraka');
+    const clean = r.words.slice(0, read).filter((w) => w.state === 'ok' && !w.tries && !w.haraka).length;
     const score = read ? Math.round((clean / read) * 100) : 0;
     const secs = r.t0 ? Math.round(((r.t1 || Date.now()) - r.t0) / 1000) : 0;
     const mins = Math.floor(secs / 60);
     const time = mins ? `${ar(mins)} دقيقة${secs % 60 ? ` و${ar(secs % 60)} ثانية` : ''}` : `${ar(secs)} ثانية`;
     const verdict = !read ? 'لم تُقرأ أي كلمة' : score >= 95 ? 'ممتاز، حفظ متقن' : score >= 85 ? 'جيد جداً' : score >= 70 ? 'جيد، يحتاج مراجعة' : 'يحتاج مراجعة أكثر';
     const stat = (v, label, cls = '') => `<div class="tsr-stat ${cls}"><b>${ar(v)}</b><span>${label}</span></div>`;
-    const tag = { fix: ['خطأ ثم صُحّح', 'fix'], forced: ['ظهرت بعد ٣ أخطاء', ''], skip: ['نسيان (تُخطيت)', 'skip'] };
+    const tag = { fix: ['خطأ ثم صُحّح', 'fix'], forced: ['ظهرت بعد ٣ أخطاء', ''], skip: ['نسيان (تُخطيت)', 'skip'], haraka: ['خطأ في الحركات', 'haraka'] };
     const list = r.mistakes.slice().sort((a, b) => a.p - b.p).map((m) => {
       const w = r.words[m.p];
-      const heard = w.heard.length ? `سُمع: ${w.heard.join('، ')}` : '';
+      const heard = m.type === 'haraka' ? `سُمع: <span class="tsr-heard">${w.haraka}</span>` : w.heard.length ? `سُمع: ${w.heard.join('، ')}` : '';
       return `<li><div><div class="tsr-word">${Q.ayat[w.i][7][w.k]}</div><span class="tsr-tag ${tag[m.type][1]}">${tag[m.type][0]}</span></div>
         <div class="tsr-meta">الآية ${ar(Q.ayat[w.i][1])}${heard ? `<br>${heard}` : ''}</div></li>`;
     }).join('');
@@ -1609,11 +1660,12 @@
         ${stat(fix, 'خطأ ثم صحّحته', 'bad')}
         ${stat(forced, 'كلمة ظهرت بعد ٣ أخطاء', 'bad')}
         ${stat(skip, 'كلمة منسية (تخطيتها)', 'bad')}
+        ${stat(haraka, 'خطأ في الحركات أو النطق', 'warn')}
         ${stat(r.rereads, 'مرة أعدت فيها القراءة', 'blue')}
         ${stat(total - read, 'كلمة لم تصل إليها')}
       </div>
       <div class="ts-card"><h3>مواضع الأخطاء</h3>${list ? `<ul class="tsr-list">${list}</ul>` : '<p class="note">لا توجد أخطاء، أحسنت! 🌟</p>'}</div>
-      <p class="note">التقرير يقارن الكلمات فقط؛ كشف أخطاء الحركات (التشكيل) غير متاح حالياً.</p>
+      <p class="note">فحص الحركات يعمل مع تعرّف السيرفر، ويتجاهل حركة آخر الكلمة عند الوقف.</p>
       <div class="tsr-actions">
         <button type="button" class="primary-btn" data-r="again">إعادة التسميع</button>
         <button type="button" class="primary-btn ghost" data-r="setup">مقطع آخر</button>

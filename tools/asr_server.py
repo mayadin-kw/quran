@@ -45,7 +45,8 @@ clients = set()
 
 
 def recognise(audio):
-    segments, _ = model.transcribe(audio, language='ar', beam_size=1, vad_filter=True,
+    # بلا vad_filter: مرشّح الصمت يقص المدود الطويلة فيضيع كلمات (السيرفر يقطع الصمت بنفسه)
+    segments, _ = model.transcribe(audio, language='ar', beam_size=1, vad_filter=False,
                                    condition_on_previous_text=False, without_timestamps=True)
     return ' '.join(s.text.strip() for s in segments).strip()
 
