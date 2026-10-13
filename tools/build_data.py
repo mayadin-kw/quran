@@ -3,7 +3,8 @@
 Inputs (in <raw_dir>):
   pages2/<p>.json          — output of fetch_layout.py (api.quran.com, Madani mushaf QCF V1 layout)
   quran-uthmani.json       — https://api.alquran.cloud/v1/quran/quran-uthmani (surah meta, juz, hizb)
-  ar.jalalayn.json         — https://api.alquran.cloud/v1/quran/ar.jalalayn (tafsir)
+
+The tafsir (data/tafsir.json) is built separately by saadi_text.py.
 
 Usage: python3 build_data.py <raw_dir>
 """
@@ -13,7 +14,6 @@ raw = sys.argv[1]
 out = os.path.join(os.path.dirname(__file__), '..', 'data')
 
 DIAC = re.compile('[ؐ-ًؚ-ٰٟۖ-ۭـ﻿]')
-NON_LETTER = re.compile('[^ء-ي]')
 
 
 def norm(s):
@@ -25,7 +25,6 @@ def norm(s):
 
 NAME_FIX = {'ال عمران': 'آل عمران', 'المائـدة': 'المائدة', 'سبإ': 'سبأ', 'النبإ': 'النبأ'}
 tanzil = json.load(open(os.path.join(raw, 'quran-uthmani.json')))['data']['surahs']
-jalalayn = json.load(open(os.path.join(raw, 'ar.jalalayn.json')))['data']['surahs']
 
 surahs, meta = [], {}
 for su in tanzil:
@@ -66,48 +65,8 @@ for s, g in first_line.items():
         marks.setdefault(str(gl // 15 + 1), []).append([kind, gl % 15 + 1, s])
 lines_per_page = {str(p): max_line[p] for p in (1, 2)}
 
-# ---- tafsir: split Jalalayn into (ayah fragment, explanation) segments ----
-def segment(text, words):
-    chars, owner = '', []
-    for k, w in enumerate(words):
-        n = NON_LETTER.sub('', w)
-        chars += n
-        owner += [k] * len(n)
-    segs, cur, pos = [[-1, -1, '']], None, 0
-    for part in re.split(r'(«[^»]*»)', text):
-        if part.startswith('«') and part.endswith('»'):
-            f = NON_LETTER.sub('', norm(part[1:-1]))
-            at = chars.find(f, pos) if len(f) >= 2 else -1
-            if at >= 0:
-                wf, wt = owner[at], owner[at + len(f) - 1]
-                last = segs[-1]
-                if last[0] >= 0 and not last[2].strip() and wf <= last[1] + 1:
-                    last[1] = wt  # consecutive fragments without explanation are merged
-                else:
-                    segs.append([wf, wt, ''])
-                pos = at + len(f)
-                continue
-        segs[-1][2] += part
-    out = []
-    for f, t, e in segs:
-        e = ' '.join(e.split())
-        if f < 0 and not e:
-            continue
-        out.append([f, t, e])
-    return out
-
-
-tafsir, matched = [], 0
-jal = {(su['number'], a['numberInSurah']): a['text'] for su in jalalayn for a in su['ayahs']}
-for i, a in enumerate(ayat):
-    segs = segment(jal[(a[0], a[1])], [w.replace('_', '') for w in search[i].split(' ')])
-    if any(f >= 0 for f, _, _ in segs):
-        matched += 1
-    tafsir.append(segs)
-
 dump = lambda name, obj: json.dump(obj, open(os.path.join(out, name), 'w', encoding='utf-8'),
                                    ensure_ascii=False, separators=(',', ':'))
 dump('quran.json', {'surahs': surahs, 'ayat': ayat, 'marks': marks, 'shortPages': lines_per_page})
 dump('search.json', search)
-dump('tafsir.json', tafsir)
-print('ayat', len(ayat), 'tafsir with ayah fragments', matched)
+print('ayat', len(ayat))

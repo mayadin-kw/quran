@@ -1,7 +1,7 @@
 // تلاوات مجانية آية بآية من EveryAyah.com — كل ملف: <base>/<SSS><AAA>.mp3
 window.AUDIO_BASE = 'https://everyayah.com/data/';
-// ملفات التفسير المسجّلة (tools/tafsir_audio.py)
-window.TAFSIR_AUDIO_BASE = 'audio/tafsir/';
+// ملفات التفسير الصوتي لكل آية (tools/atif_split.py)
+window.TAFSIR_AUDIO_BASE = 'https://162-35-27-249.sslip.io/quran-audio/tafsir/';
 window.RECITERS = [
   { id: 'Alafasy_128kbps', name: 'مشاري راشد العفاسي' },
   { id: 'Abdurrahmaan_As-Sudais_192kbps', name: 'عبدالرحمن السديس' },

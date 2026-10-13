@@ -86,7 +86,12 @@
   const ayahRef = (i) => `سورة ${surahOf(i).name} - الآية ${ar(Q.ayat[i][1])}`;
 
   let tafsirPromise = null;
-  const loadTafsir = () => (tafsirPromise ||= fetch('data/tafsir.json').then((r) => r.json()).catch((e) => { tafsirPromise = null; throw e; }));
+  // تفسير السعدي: وحدات [أول آية، آخر آية، النص] — قد تشرح الوحدة عدة آيات. يُعاد مصفوفة: لكل آية وحدتها
+  const loadTafsir = () => (tafsirPromise ||= fetch('data/tafsir.json').then((r) => r.json()).then(({ units }) => {
+    const byAyah = [];
+    units.forEach(([first, last, text]) => { const u = { first, last, text }; for (let k = first; k <= last; k++) byAyah[k] = u; });
+    return byAyah;
+  }).catch((e) => { tafsirPromise = null; throw e; }));
 
   /* ================= خطوط صفحات المصحف ================= */
   const fontState = new Map(); // رقم الصفحة → Promise
@@ -559,28 +564,14 @@
     mountPop(node, sel.i);
   }
 
-  // يحوّل مقاطع تفسير الجلالين إلى [{q: جزء الآية أو '', f, t: أرقام الكلمات, e: الشرح}]
-  function tafsirItems(i, segs) {
-    const words = Q.ayat[i][7];
-    const items = segs.map(([fr, to, e]) => ({ q: fr >= 0 ? words.slice(fr, to + 1).join(' ') : '', f: fr, t: to, e }));
-    if (!items.some((x) => x.q)) {
-      if (items.length) Object.assign(items[0], { q: ayahText(i), f: 0, t: words.length - 1 });
-      else items.push({ q: ayahText(i), f: 0, t: words.length - 1, e: '' });
-    }
+  // يقسم نص السعدي عند كل اقتباس {…} من القرآن: [{q: الاقتباس أو '', e: الشرح الذي يليه}]
+  function tafsirItems(unit) {
+    const parts = unit.text.split(/\{([^}]*)\}/);
+    const items = parts[0].trim() ? [{ q: '', e: parts[0].trim() }] : [];
+    for (let k = 1; k < parts.length; k += 2) items.push({ q: parts[k].trim(), e: parts[k + 1].replace(/^[\s.،,:؛]+$/, '').trim() });
     return items;
   }
-
-  // يحوّل الرسم العثماني إلى نص يقرؤه صوت الجهاز قراءة عادية
-  function speakable(text) {
-    return text
-      .replace(/\u0640?\u0670/g, 'ا')                 // الألف الخنجرية (ـٰ) ← ألف
-      .replace(/\u0671/g, 'ا')                        // ألف الوصل ٱ
-      .replace(/ءَا/g, 'آ')                           // ءَامنوا ← آمنوا
-      .replace(/[\u08F0-\u08F2]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x08F0 + 0x064B)) // تنوين متتابع
-      .replace(/[\u06D6-\u06ED\u0640]/g, '')            // علامات الوقف والضبط القرآنية والتطويل
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
+  const unitRef = (u) => `${surahOf(u.first).name} ${ar(Q.ayat[u.first][1])}${u.last > u.first ? `-${ar(Q.ayat[u.last][1])}` : ''}`;
 
   // يقسّم الشرح إلى جمل قصيرة للقراءة الصوتية
   function chunksOf(text) {
@@ -605,7 +596,7 @@
     node.dataset.i = i;
     node.innerHTML = `<div class="tafsir-head">
         <button type="button" class="icon-btn small" data-t="back" aria-label="رجوع للخيارات">${ICON.back}</button>
-        <h3>تفسير الجلالين · ${surahOf(i).name} ${ar(Q.ayat[i][1])}</h3>
+        <h3>تفسير السعدي · ${surahOf(i).name} ${ar(Q.ayat[i][1])}</h3>
       </div>
       <div class="tafsir-tools">
         <button type="button" class="chip" data-t="listen">${ICON.listen}<span>استماع التفسير</span></button>
@@ -613,13 +604,14 @@
       </div>
       <ol class="tafsir-body"><li class="t-loading"><span class="spinner"></span></li></ol>`;
     let items = null;
+    let unit = null;
     node.addEventListener('click', (e) => {
       const b = e.target.closest('[data-t]');
       if (!b) return;
       if (b.dataset.t === 'back') { if (player.isTafsirOf(i)) player.close(); showActions(); }
       if (b.dataset.t === 'copy' && items) {
         const text = items.map((it) => [it.q && `﴿${it.q}﴾`, it.e].filter(Boolean).join('\n')).join('\n\n');
-        copyText(`${text}\n\n(تفسير الجلالين - ${ayahRef(i)})`, 'تم نسخ التفسير');
+        copyText(`${text}\n\n(تفسير السعدي - ${unitRef(unit)})`, 'تم نسخ التفسير');
       }
       if (b.dataset.t === 'listen') {
         if (player.isTafsirOf(i)) player.close();
@@ -628,12 +620,14 @@
     });
     mountPop(node, i);
     try {
-      items = tafsirItems(i, (await loadTafsir())[i]);
+      unit = (await loadTafsir())[i];
+      items = tafsirItems(unit);
     } catch {
       items = null;
     }
     if (pop !== node) return;
     $('.tafsir-body', node).innerHTML = items ? tafsirListHTML(items) : '<li class="t-error">تعذّر تحميل التفسير، تحقق من الاتصال.</li>';
+    if (unit && unit.last > unit.first) $('h3', node).textContent = `تفسير السعدي · ${unitRef(unit)}`;
     syncTafsirButton();
   }
 
@@ -883,73 +877,6 @@
     select(r.i, r.words.size ? r.words : null);
   });
 
-  /* ================= القراءة الصوتية للشرح (صوت الجهاز) ================= */
-  const tts = (() => {
-    const supported = 'speechSynthesis' in window;
-    let voice = null;
-    let ready = null;
-    function pickVoice() {
-      const vs = speechSynthesis.getVoices().filter((v) => /^ar/i.test(v.lang));
-      voice = vs.find((v) => /ar[-_]SA/i.test(v.lang)) || vs[0] || null;
-      return voice;
-    }
-    function init() {
-      if (!supported) return Promise.resolve(null);
-      return (ready ||= new Promise((resolve) => {
-        if (pickVoice()) { resolve(voice); return; }
-        speechSynthesis.addEventListener('voiceschanged', () => { if (pickVoice()) resolve(voice); });
-        setTimeout(() => resolve(pickVoice()), 1500);
-      }));
-    }
-    // تُستدعى داخل ضغطة المستخدم حتى تسمح المتصفحات (خصوصاً iPhone) بالكلام لاحقاً
-    function unlock() {
-      if (!supported) return;
-      const u = new SpeechSynthesisUtterance(' ');
-      u.volume = 0;
-      speechSynthesis.speak(u);
-      init();
-    }
-    let started = false; // هل نطق المحرك شيئاً فعلاً؟ (بعض أجهزة أندرويد لا تُظهر قائمة الأصوات لكنها تنطق)
-    let armLive = null;
-    let live = null; // مرجع ثابت: كروم لا يرسل حدث النهاية إذا حُذف الكائن من الذاكرة
-    function speak(text, onWord) {
-      return new Promise((resolve) => {
-        if (!supported) { resolve(false); return; }
-        const u = new SpeechSynthesisUtterance(text);
-        live = u;
-        let guard = 0;
-        const finish = (ok) => { clearTimeout(guard); if (live === u) live = null; resolve(ok); };
-        // احتياط إذا علِق المحرك ولم يرسل حدث النهاية
-        const arm = (ms) => { clearTimeout(guard); guard = setTimeout(() => { speechSynthesis.cancel(); finish(false); }, ms); };
-        armLive = { arm, stop: () => clearTimeout(guard), ms: 3000 + text.length * 110 };
-        arm(4000 + text.length * 120);
-        u.onstart = () => { started = true; arm(3000 + text.length * 110); };
-        u.lang = voice ? voice.lang : 'ar-SA';
-        if (voice) u.voice = voice;
-        u.rate = 0.95;
-        const starts = [];
-        text.split(' ').reduce((pos, w) => { starts.push(pos); return pos + w.length + 1; }, 0);
-        u.onboundary = (e) => {
-          if (e.name && e.name !== 'word') return;
-          let k = 0;
-          while (k + 1 < starts.length && starts[k + 1] <= e.charIndex) k++;
-          onWord(k);
-        };
-        u.onend = () => finish(true);
-        u.onerror = () => finish(false);
-        if (speechSynthesis.paused) speechSynthesis.resume();
-        speechSynthesis.speak(u);
-      });
-    }
-    return {
-      init, unlock, speak, warned: false,
-      works: () => started,
-      cancel: () => { if (supported) speechSynthesis.cancel(); },
-      pause: () => { if (!supported) return; if (armLive) armLive.stop(); speechSynthesis.pause(); },
-      resume: () => { if (!supported) return; if (armLive) armLive.arm(armLive.ms); speechSynthesis.resume(); },
-    };
-  })();
-
   /* ================= مشغل الصوت ================= */
   const player = (() => {
     const audio = new Audio();
@@ -966,9 +893,8 @@
     let finished = false;
     let seeking = false;
     let token = 0;         // يتغير عند كل إيقاف/انتقال لإلغاء أي تسلسل جارٍ
-    let phase = null;      // 'audio' | 'speech'
-    let tafsirSync = null; // أثناء تشغيل ملف تفسير مسجّل: { i, parts, ends, last }
-    let paused = false;
+    let phase = null;      // 'audio' أثناء تشغيل ملف صوتي
+    let tafsirSync = null; // أثناء تشغيل ملف تفسير مسجّل: { i }
     let preloader = null;
 
     const fmt = (t) => (Number.isFinite(t) ? ar(`${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`) : ar('0:00'));
@@ -1010,7 +936,7 @@
       if (it.kind === 'basmala') ui.title.textContent = `سورة ${Q.surahs[it.s - 1].name} - البسملة`;
       else if (it.kind === 'tafsir') ui.title.textContent = `تفسير ${ayahRef(it.i)}`;
       else ui.title.textContent = ayahRef(it.i);
-      ui.reciter.textContent = it.kind === 'tafsir' ? 'تفسير الجلالين' : reciterName();
+      ui.reciter.textContent = it.kind === 'tafsir' ? 'تفسير السعدي' : reciterName();
       if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({ title: ui.title.textContent, artist: ui.reciter.textContent, album: 'القرآن الكريم' });
       }
@@ -1046,9 +972,7 @@
       token++;
       tafsirSync = null;
       audio.pause();
-      tts.cancel();
       phase = null;
-      paused = false;
     }
 
     async function playAt(k) {
@@ -1081,22 +1005,8 @@
       syncTafsirButton();
     }
 
-    function noVoice() {
-      if (tts.warned) return;
-      tts.warned = true;
-      toast('جهازك لا يحتوي على صوت عربي للقراءة. ثبّته من: الإعدادات ← الإدارة العامة/النظام ← تحويل النص إلى كلام ← محرك Google ← تثبيت بيانات الصوت ← العربية', 9000);
-    }
-
-    async function waitWhilePaused(my) {
-      while (paused && my === token) await sleep(150);
-    }
-
     async function runTafsir(i, my) {
       syncTafsirButton();
-      let segs;
-      try { segs = (await loadTafsir())[i]; } catch { toast('تعذّر تحميل التفسير'); setState('paused'); return; }
-      if (my !== token) return;
-      const items = tafsirItems(i, segs);
       if (mode === 'withTafsir' && (!pop || !pop.classList.contains('tafsir') || +pop.dataset.i !== i)) {
         sel = { i, words: null };
         redrawMarks();
@@ -1104,87 +1014,36 @@
         if (my !== token) return;
       }
       syncTafsirButton();
-      const ends = await tafsirAudioEnds(i);
+      const file = await tafsirAudioFile(i);
       if (my !== token) return;
-      const parts = tafsirParts(items);
-      if (ends && ends.length === parts.length) { playTafsirFile(i, parts, ends); return; }
-      speakTafsir(i, items, my);
+      // آية شُرحت مع التي بعدها: في الاستماع المتتابع يأتي شرحها بعد الآية التالية
+      if (file && file.shared && mode === 'withTafsir') { advance(); return; }
+      if (file) { playTafsirFile(i, file.url); return; }
+      if (!runTafsir.warned) { runTafsir.warned = true; toast('بعض الآيات لم يُسجَّل تفسيرها الصوتي بعد', 3500); }
+      advance();
     }
 
-    // التفسير المسجّل مسبقاً (tools/tafsir_audio.py): ملف واحد للآية، وزمن نهاية كل مقطع
+    // التفسير الصوتي المسجّل (د. علي عطيف، tools/atif_split.py): ملف لكل آية
     let tafsirIndex = null;
-    function tafsirAudioEnds(i) {
+    function tafsirAudioFile(i) {
       tafsirIndex ||= fetch(`${window.TAFSIR_AUDIO_BASE}index.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-      return tafsirIndex.then((x) => (x && x.ayat[i]) || null);
-    }
-    // نفس ترتيب المقاطع في الملف: جزء الآية ثم جمل شرحه
-    function tafsirParts(items) {
-      const parts = [];
-      items.forEach((it, n) => {
-        if (it.q) parts.push({ n });
-        if (it.e) chunksOf(it.e).forEach((ch, c) => parts.push({ n, c, words: ch.split(' ').length }));
+      return tafsirIndex.then((x) => {
+        if (!x) return null;
+        const j = x.shared[i] ?? i;
+        if (!x.ayat.includes(j)) return null;
+        const [s, a] = Q.ayat[j];
+        return { url: `${window.TAFSIR_AUDIO_BASE}${pad3(s)}${pad3(a)}.${x.ext}`, shared: j !== i };
       });
-      return parts;
     }
-    function playTafsirFile(i, parts, ends) {
-      const [s, a] = Q.ayat[i];
-      tafsirSync = { i, parts, ends, last: '' };
+    function playTafsirFile(i, url) {
+      tafsirSync = { i };
       ui.back.disabled = false;
       ui.fwd.disabled = false;
+      tafsirHighlight(i, 0);
+      if (pop && +pop.dataset.i === i) $$('.t-chunk', pop).forEach((x) => x.classList.add('reading'));
       phase = 'audio';
-      audio.src = `${window.TAFSIR_AUDIO_BASE}${pad3(s)}${pad3(a)}.mp3`;
+      audio.src = url;
       audio.play().catch((err) => { if (err.name !== 'AbortError') setState('paused'); });
-    }
-    function syncTafsirFile() {
-      const x = tafsirSync;
-      if (!x) return;
-      const t = audio.currentTime * 1000;
-      let k = 0;
-      while (k < x.ends.length - 1 && x.ends[k] <= t) k++;
-      const p = x.parts[k];
-      const from = k ? x.ends[k - 1] : 0;
-      const w = p.words ? Math.min(p.words - 1, Math.floor(((t - from) / (x.ends[k] - from)) * p.words)) : -1;
-      const key = `${k}:${w}`;
-      if (key === x.last) return;
-      x.last = key;
-      if (p.words) tafsirHighlight(x.i, p.n, 'e', p.c, w);
-      else tafsirHighlight(x.i, p.n, 'q');
-    }
-
-    // بديل عند عدم وجود ملف مسجّل: صوت الجهاز يقرأ جزء الآية ثم شرحه
-    async function speakTafsir(i, items, my) {
-      await tts.init();
-      if (my !== token) return;
-      setState('playing');
-      for (let n = 0; n < items.length; n++) {
-        const it = items[n];
-        setProgress(n, items.length);
-        ui.cur.textContent = ar(n + 1);
-        ui.dur.textContent = ar(items.length);
-        if (it.q) {
-          tafsirHighlight(i, n, 'q');
-          phase = 'speech';
-          const ok = await tts.speak(speakable(it.q), () => {});
-          if (my !== token) return;
-          if (!ok && !tts.works()) { noVoice(); advance(); return; }
-          await waitWhilePaused(my);
-        }
-        if (it.e) {
-          const chunks = chunksOf(it.e);
-          for (let c = 0; c < chunks.length; c++) {
-            tafsirHighlight(i, n, 'e', c, -1);
-            phase = 'speech';
-            const ok = await tts.speak(chunks[c], (w) => { if (my === token) tafsirHighlight(i, n, 'e', c, w); });
-            if (my !== token) return;
-            if (!ok && !tts.works()) { noVoice(); advance(); return; }
-            await waitWhilePaused(my);
-          }
-        }
-        if (my !== token) return;
-      }
-      tafsirHighlight(i, -1);
-      setProgress(1, 1);
-      advance();
     }
 
     function stepAyah(dir) {
@@ -1210,8 +1069,7 @@
     audio.addEventListener('playing', () => setState('playing'));
     audio.addEventListener('pause', () => { if (phase === 'audio') setState('paused'); });
     audio.addEventListener('waiting', () => setState('loading'));
-    audio.addEventListener('timeupdate', () => { if (phase === 'audio') { setProgress(audio.currentTime, audio.duration); syncTafsirFile(); } });
-    setInterval(() => { if (tafsirSync && !audio.paused) syncTafsirFile(); }, 120);
+    audio.addEventListener('timeupdate', () => { if (phase === 'audio') setProgress(audio.currentTime, audio.duration); });
     audio.addEventListener('loadedmetadata', () => { if (phase === 'audio') setProgress(audio.currentTime, audio.duration); });
     audio.addEventListener('ended', () => {
       if (phase !== 'audio') return;
@@ -1220,28 +1078,17 @@
     });
     audio.addEventListener('error', () => {
       if (!audio.getAttribute('src') || phase !== 'audio') return;
-      if (tafsirSync) {
-        // تعذّر ملف التفسير: نكمل بصوت الجهاز
-        const { i } = tafsirSync;
-        tafsirSync = null;
-        phase = null;
-        loadTafsir().then((t) => speakTafsir(i, tafsirItems(i, t[i]), token));
-        return;
-      }
       setState('paused');
-      toast('تعذّر تشغيل التلاوة، تحقق من الاتصال');
+      toast(tafsirSync ? 'تعذّر تشغيل التفسير، تحقق من الاتصال' : 'تعذّر تشغيل التلاوة، تحقق من الاتصال');
     });
 
     ui.play.addEventListener('click', () => {
       if (!queue.length) return;
-      if (finished) { tts.unlock(); playAt(0); return; }
-      if (phase === 'audio') { if (audio.paused) audio.play().catch(() => {}); else audio.pause(); return; }
-      paused = !paused;
-      if (phase === 'speech') { if (paused) tts.pause(); else tts.resume(); }
-      setState(paused ? 'paused' : 'playing');
+      if (finished) { playAt(0); return; }
+      if (phase === 'audio') { if (audio.paused) audio.play().catch(() => {}); else audio.pause(); }
     });
-    ui.prev.addEventListener('click', () => { tts.unlock(); stepAyah(-1); });
-    ui.next.addEventListener('click', () => { tts.unlock(); stepAyah(1); });
+    ui.prev.addEventListener('click', () => stepAyah(-1));
+    ui.next.addEventListener('click', () => stepAyah(1));
     ui.back.addEventListener('click', () => { if (phase === 'audio') audio.currentTime = Math.max(0, audio.currentTime - 5); });
     ui.fwd.addEventListener('click', () => {
       if (phase === 'audio' && Number.isFinite(audio.duration)) audio.currentTime = Math.min(audio.duration - 0.05, audio.currentTime + 5);
@@ -1273,14 +1120,12 @@
         playAt(0);
       },
       playTafsir(i) {
-        tts.unlock();
         mode = 'tafsirOnly';
         queue = [{ kind: 'tafsir', i }];
         playAt(0);
         syncTafsirButton();
       },
       playRange(s, from, to, withTafsir) {
-        tts.unlock();
         mode = withTafsir ? 'withTafsir' : 'range';
         queue = [];
         if (from === 1 && s !== 1 && s !== 9) queue.push({ kind: 'basmala', s });
