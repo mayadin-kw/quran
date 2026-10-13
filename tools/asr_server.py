@@ -3,17 +3,18 @@
 WebSocket at ws://127.0.0.1:8088/ws (Caddy serves it as wss://…/quran-asr/ws).
 The browser streams 16 kHz mono 16-bit PCM in small binary messages; the server
 answers with JSON {"type": "partial" | "final", "text": "..."}:
-  partial — the current phrase so far, re-recognised about every 0.7 s while the
-            reader speaks;
+  partial — the current phrase so far, re-recognised (quick model) about every
+            second while the reader speaks;
   final   — the phrase once the reader pauses (or after MAX_PHRASE seconds).
 
-Model: tarteel-ai/whisper-base-ar-quran in CTranslate2 form
-(OdyAsh/faster-whisper-base-ar-quran, Apache-2.0), run by faster-whisper on the CPU.
-It outputs Quranic text with diacritics.
+Models (Tarteel's Quran fine-tunes of Whisper, CTranslate2 form, run by faster-whisper on the CPU;
+both output Quranic text with the diacritics actually heard):
+  partials — tarteel-ai/whisper-tiny-ar-quran (hafizku/faster-whisper-tiny-ar-quran), ~0.7 s per update
+  finals   — tarteel-ai/whisper-base-ar-quran (OdyAsh/faster-whisper-base-ar-quran, Apache-2.0), more accurate
 
 Setup on the server (see README):
   python3 -m venv venv && venv/bin/pip install faster-whisper==1.1.1 websockets==13.1 requests
-  venv/bin/python -c "from huggingface_hub import snapshot_download as d; d('OdyAsh/faster-whisper-base-ar-quran', local_dir='model')"
+  venv/bin/python -c "from huggingface_hub import snapshot_download as d; d('OdyAsh/faster-whisper-base-ar-quran', local_dir='model'); d('hafizku/faster-whisper-tiny-ar-quran', local_dir='model-tiny')"
   venv/bin/python asr_server.py
 """
 import asyncio, json, logging, os, time
@@ -24,6 +25,7 @@ from faster_whisper import WhisperModel
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.environ.get('ASR_MODEL', os.path.join(HERE, 'model'))
+FAST_DIR = os.environ.get('ASR_FAST_MODEL', os.path.join(HERE, 'model-tiny'))
 THREADS = int(os.environ.get('ASR_THREADS', '2'))  # leave a core for the other services on the server
 ORIGINS = os.environ.get('ASR_ORIGINS', 'https://mayadin-kw.github.io,https://yadin-kw.github.io,http://localhost:8765').split(',')
 SR = 16000
@@ -33,27 +35,28 @@ PAUSE = 0.7                      # seconds of quiet that end a phrase
 MAX_PHRASE = 25.0                # longest phrase sent to the model at once (it reads up to 30 s)
 MIN_VOICE = 1.0                  # seconds of voice before a phrase is recognised: shorter bits make the model guess
 PRE_ROLL = 0.3                   # audio kept from before speech starts
-PARTIAL_EVERY = 0.7
+PARTIAL_EVERY = 0.4
 MAX_CLIENTS = 4
 MAX_SESSION = 45 * 60
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 log = logging.getLogger('asr')
 model = WhisperModel(MODEL_DIR, device='cpu', compute_type='int8', cpu_threads=THREADS)
+fast = WhisperModel(FAST_DIR, device='cpu', compute_type='int8', cpu_threads=THREADS) if os.path.isdir(FAST_DIR) else model
 busy = asyncio.Lock()            # one recognition at a time: the CPU is small
 clients = set()
 
 
-def recognise(audio):
+def recognise(audio, quick=False):
     # بلا vad_filter: مرشّح الصمت يقص المدود الطويلة فيضيع كلمات (السيرفر يقطع الصمت بنفسه)
-    segments, _ = model.transcribe(audio, language='ar', beam_size=1, vad_filter=False,
+    segments, _ = (fast if quick else model).transcribe(audio, language='ar', beam_size=1, vad_filter=False,
                                    condition_on_previous_text=False, without_timestamps=True)
     return ' '.join(s.text.strip() for s in segments).strip()
 
 
-async def run(audio):
+async def run(audio, quick=False):
     async with busy:
-        return await asyncio.get_running_loop().run_in_executor(None, recognise, audio)
+        return await asyncio.get_running_loop().run_in_executor(None, recognise, audio, quick)
 
 
 async def session(ws):
@@ -76,7 +79,7 @@ async def session(ws):
             if state['voice'] < MIN_VOICE or len(phrase) - state['decoded'] < SR * 0.3 or busy.locked():
                 continue
             version, audio = state['version'], phrase.copy()
-            text = await run(audio)
+            text = await run(audio, quick=True)
             if version == state['version']:  # the phrase was not closed meanwhile
                 state['decoded'] = len(audio)
                 await send('partial', text)

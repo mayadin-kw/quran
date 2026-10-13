@@ -1320,7 +1320,7 @@
   function tsStep(tokens, t, final) {
     const p = ts.ptr;
     let n = tsMatch(tokens, t, p);
-    if (n) { tsReveal(p, n === 1 ? t : -1, tokens); return t + n; }
+    if (n) { tsReveal(p, n === 1 ? t : -1, tokens, final); return t + n; }
     // متابعة إعادة قراءة بدأت
     if (ts.againAt >= 0 && ts.againAt + 1 < p && (n = tsMatch(tokens, t, ts.againAt + 1))) { tsAgain(ts.againAt + 1); return t + n; }
     if (!final) return -1; // النتائج المؤقتة تُستعمل للإظهار السريع فقط، والأخطاء تُحسب من النتائج النهائية
@@ -1330,7 +1330,7 @@
       n = tsMatch(tokens, t, p + d);
       if (n && (tokens[t].length >= 4 || tsMatch(tokens, t + n, p + d + 1))) {
         for (let q = p; q < p + d; q++) tsMiss(q, 'skip');
-        tsReveal(p + d, n === 1 ? t : -1, tokens);
+        tsReveal(p + d, n === 1 ? t : -1, tokens, final);
         return t + n;
       }
     }
@@ -1343,19 +1343,14 @@
     return t + 1;
   }
 
-  // t: موضع الكلمة المسموعة (لفحص الحركات)، أو -1 إن طابقت أكثر من كلمة مسموعة
-  function tsReveal(p, t = -1, tokens = null) {
+  // t: موضع الكلمة المسموعة (لفحص الحركات)، أو -1 إن طابقت أكثر من كلمة مسموعة.
+  // الحركات تُفحص من النتيجة النهائية فقط (الأدق)؛ ما ظهر من نتيجة مؤقتة يُفحص حين تصل النهائية
+  function tsReveal(p, t = -1, tokens = null, final = true) {
     const w = ts.words[p];
     if (w.tries) ts.mistakes.push({ p, type: 'fix' });
-    const heard = t >= 0 && ts.cur ? ts.cur.raw[t] : '';
-    if (heard) {
-      const waqf = ts.cur.ends.has(t);
-      // الكلمة طابقت بتسامح لا حرفياً: نطقها مختلف (حرف أو حركة)، والسيرفر يكتب بدقة
-      const differs = !w.alts.some((alt) => alt.length === 1 && alt[0] === tokens[t]);
-      if (tsHarakaError(Q.ayat[w.i][7][w.k], heard, waqf) || (differs && /[\u064B-\u0652]/.test(heard))) {
-        w.haraka = heard;
-        ts.mistakes.push({ p, type: 'haraka' });
-      }
+    if (t >= 0) {
+      if (final) tsCheckHaraka(p, t, tokens);
+      else ts.pending.push(p);
     }
     w.state = 'ok';
     ts.ptr = p + 1;
@@ -1363,6 +1358,29 @@
     ts.started = true;
     tsEndAgain();
     tsUpdate();
+  }
+  function tsCheckHaraka(p, t, tokens) {
+    const w = ts.words[p];
+    const heard = ts.cur && ts.cur.raw[t];
+    if (!heard || w.haraka) return;
+    const waqf = ts.cur.ends.has(t);
+    // طابقت بتسامح لا حرفياً: نطقها مختلف (حرف أو حركة)، وتعرّف السيرفر يكتب ما سمعه بدقة
+    const differs = !w.alts.some((alt) => alt.length === 1 && alt[0] === tokens[t]);
+    if (tsHarakaError(Q.ayat[w.i][7][w.k], heard, waqf) || (differs && /[\u064B-\u0652]/.test(heard))) {
+      w.haraka = heard;
+      ts.mistakes.push({ p, type: 'haraka' });
+    }
+  }
+  // يطابق الكلمات التي ظهرت من نتائج مؤقتة مع النص النهائي للجملة [from, to) ويفحص حركاتها
+  function tsCheckPending(tokens, from, to) {
+    let j = from;
+    ts.pending.forEach((p) => {
+      for (; j < to; j++) {
+        if (tsMatch(tokens, j, p) === 1) { tsCheckHaraka(p, j, tokens); j++; return; }
+      }
+    });
+    ts.pending = [];
+    tsUpdate(false);
   }
   function tsBegin() {
     if (!ts.t0) ts.t0 = Date.now();
@@ -1412,7 +1430,13 @@
     Object.values(panes).forEach((pane) => pane.firstElementChild && tsPaint(pane.firstElementChild));
     const done = Math.min(ts.ptr, ts.words.length);
     ts$.progress.textContent = `${ar(done)} / ${ar(ts.words.length)} كلمة`;
-    if (ts.ptr >= ts.words.length) { setTimeout(() => ts && tsFinish(), 900); return; }
+    if (ts.ptr >= ts.words.length) {
+      // ننتظر النتيجة النهائية لفحص حركات آخر الكلمات قبل التقرير
+      const session = ts;
+      const finish = (waited) => { if (ts === session && (!ts.pending.length || waited >= 4000)) tsFinish(); else if (ts === session) setTimeout(() => finish(waited + 300), 300); };
+      setTimeout(() => finish(900), 900);
+      return;
+    }
     if (follow) {
       const page = Q.ayat[ts.words[ts.ptr].i][2];
       if (page !== current && !animating) goTo(page, { animate: Math.abs(page - current) === 1 });
@@ -1473,6 +1497,7 @@
     rec.continuous = true;
     rec.interimResults = true;
     let consumed = 0;
+    let checked = 0; // كم كلمة من النتائج النهائية فُحصت حركاتها
     rec.onresult = (e) => {
       if (!ts || ts.rec !== rec) return;
       const { tokens, raw, ends, finalCount } = tsTokens(e.results, e.server);
@@ -1488,6 +1513,10 @@
         t = next;
       }
       consumed = Math.max(consumed, t);
+      if (ts && finalCount > checked) {
+        if (ts.pending.length) tsCheckPending(tokens, checked, finalCount);
+        checked = finalCount;
+      }
     };
     rec.onerror = (e) => {
       if (!ts || ts.rec !== rec) return;
@@ -1511,7 +1540,7 @@
 
   async function tsStart(s, from, to) {
     tsStop();
-    ts = { s, from, to, words: [], index: new Map(), ptr: 0, againAt: -1, again: new Set(), rereads: 0, mistakes: [],
+    ts = { s, from, to, words: [], index: new Map(), ptr: 0, againAt: -1, again: new Set(), rereads: 0, mistakes: [], pending: [],
       started: false, ready: false, running: true, t0: 0, rec: null };
     tsListen(); // داخل ضغطة المستخدم حتى يسمح المتصفح بالمايكروفون
     els.reader.classList.add('tasmee');
