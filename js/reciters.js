@@ -2,6 +2,8 @@
 window.AUDIO_BASE = 'https://everyayah.com/data/';
 // ملفات التفسير الصوتي لكل آية (tools/atif_split.py)
 window.TAFSIR_AUDIO_BASE = 'https://162-35-27-249.sslip.io/quran-audio/tafsir/';
+// التعرّف على التلاوة في التسميع (tools/asr_server.py على السيرفر). احذفه لاستعمال التعرّف المدمج في المتصفح
+window.ASR_URL = 'wss://162-35-27-249.sslip.io/quran-asr/ws';
 window.RECITERS = [
   { id: 'Alafasy_128kbps', name: 'مشاري راشد العفاسي' },
   { id: 'Abdurrahmaan_As-Sudais_192kbps', name: 'عبدالرحمن السديس' },

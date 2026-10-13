@@ -1186,6 +1186,72 @@
   // ويُظهر كل كلمة تُقرأ صحيحة. الكلمة الخاطئة: مربع أحمر مكانها، وبعد ٣ محاولات تظهر بالأحمر.
   // إعادة قراءة كلمات ظاهرة: إطار أزرق خفيف. وفي النهاية تقرير مفصل.
   const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  // التعرّف على التلاوة من سيرفر الموقع (نموذج مدرَّب على القرآن، tools/asr_server.py).
+  // واجهته مثل SpeechRecognition في المتصفح حتى يعمل التسميع مع أيهما: يبث صوت المايك
+  // بدقة 16 كيلوهرتز، ويستقبل نص الجملة الجارية (partial) ثم نصها النهائي عند التوقف (final).
+  let tsAudio = null; // سياق صوت واحد يُنشأ داخل ضغطة المستخدم ويبقى (سفاري يشترط ذلك)
+  class ServerRec {
+    start() {
+      this.finals = [];
+      this.partial = '';
+      tsAudio ||= new (window.AudioContext || window.webkitAudioContext)();
+      tsAudio.resume();
+      const ws = new WebSocket(window.ASR_URL);
+      this.ws = ws;
+      ws.binaryType = 'arraybuffer';
+      let opened = false;
+      ws.onopen = () => { opened = true; };
+      ws.onmessage = (m) => {
+        const d = JSON.parse(m.data);
+        if (d.type === 'final') { this.finals.push(d.text); this.partial = ''; } else this.partial = d.text;
+        const results = this.finals.map((t) => Object.assign([{ transcript: t }], { isFinal: true }));
+        if (this.partial) results.push(Object.assign([{ transcript: this.partial }], { isFinal: false }));
+        if (this.onresult) this.onresult({ results, server: true });
+      };
+      ws.onclose = () => {
+        if (this.stopped) return;
+        this.abort();
+        if (this.onerror) this.onerror({ error: opened ? 'network' : 'server-unavailable' });
+        if (this.onend) this.onend();
+      };
+      navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+        .then((stream) => {
+          if (this.stopped) { stream.getTracks().forEach((tr) => tr.stop()); return; }
+          this.stream = stream;
+          this.src = tsAudio.createMediaStreamSource(stream);
+          this.proc = tsAudio.createScriptProcessor(4096, 1, 1);
+          const ratio = tsAudio.sampleRate / 16000;
+          this.proc.onaudioprocess = (e) => {
+            if (ws.readyState !== WebSocket.OPEN) return;
+            const x = e.inputBuffer.getChannelData(0);
+            const out = new Int16Array(Math.floor(x.length / ratio));
+            for (let j = 0; j < out.length; j++) {
+              const a = Math.floor(j * ratio);
+              const b = Math.max(a + 1, Math.floor((j + 1) * ratio));
+              let sum = 0;
+              for (let q = a; q < b; q++) sum += x[q];
+              out[j] = Math.max(-1, Math.min(1, sum / (b - a))) * 32767;
+            }
+            ws.send(out.buffer);
+          };
+          this.src.connect(this.proc);
+          this.proc.connect(tsAudio.destination);
+        })
+        .catch(() => {
+          this.abort();
+          if (this.onerror) this.onerror({ error: 'not-allowed' });
+        });
+    }
+    abort() {
+      this.stopped = true;
+      if (this.proc) { this.proc.onaudioprocess = null; this.proc.disconnect(); }
+      if (this.src) this.src.disconnect();
+      if (this.stream) this.stream.getTracks().forEach((tr) => tr.stop());
+      if (this.ws && this.ws.readyState <= WebSocket.OPEN) this.ws.close();
+    }
+    stop() { this.abort(); }
+  }
   const ts$ = {
     surah: $('#tsSurah'), from: $('#tsFrom'), to: $('#tsTo'), mic: $('#tsMic'), start: $('#tsStart'),
     support: $('#tsSupport'), progress: $('#tsProgress'), heard: $('#tsHeard'), rBody: $('#tsrBody'), rRange: $('#tsrRange'),
@@ -1343,9 +1409,9 @@
 
   // نص التعرّف الحالي ككلمات، وعدد الكلمات النهائية منها.
   // كروم أندرويد يعيد أحياناً كل النص السابق في كل نتيجة جديدة، فتُستعمل آخر نتيجة فقط حينها.
-  function tsTokens(results) {
+  function tsTokens(results, fromServer) {
     const list = [...results].map((r) => ({ words: tsClean(r[0].transcript).split(' ').filter(Boolean), final: r.isFinal }));
-    const cumulative = list.length > 1 && list.every((r, k) => !k || r.words.join(' ').startsWith(list[k - 1].words.join(' ')));
+    const cumulative = !fromServer && list.length > 1 && list.every((r, k) => !k || r.words.join(' ').startsWith(list[k - 1].words.join(' ')));
     const use = cumulative ? [list[list.length - 1]] : list;
     const tokens = [];
     let finalCount = 0;
@@ -1354,14 +1420,15 @@
   }
 
   function tsListen() {
-    const rec = new SpeechRec();
+    const useServer = window.ASR_URL && !(ts && ts.native);
+    const rec = useServer ? new ServerRec() : new SpeechRec();
     rec.lang = 'ar-SA';
     rec.continuous = true;
     rec.interimResults = true;
     let consumed = 0;
     rec.onresult = (e) => {
       if (!ts || ts.rec !== rec) return;
-      const { tokens, finalCount } = tsTokens(e.results);
+      const { tokens, finalCount } = tsTokens(e.results, e.server);
       if (tokens.length) ts$.heard.textContent = tokens.slice(-7).join(' ');
       if (!ts.ready) return;
       let t = consumed;
@@ -1377,7 +1444,10 @@
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
         toast('لم يُسمح باستخدام المايكروفون. اسمح به من إعدادات المتصفح ثم أعد المحاولة', 5000);
         ts.running = false;
-      } else if (e.error === 'network') {
+      } else if (e.error === 'server-unavailable' && SpeechRec) {
+        ts.native = true; // سيرفر التسميع لا يرد: نكمل بالتعرّف المدمج في المتصفح
+        toast('سيرفر التسميع غير متاح الآن، سيُستعمل التعرّف من المتصفح', 3500);
+      } else if (e.error === 'network' || e.error === 'server-unavailable') {
         toast('التسميع يحتاج اتصالاً بالإنترنت', 3500);
       }
     };
@@ -1440,7 +1510,7 @@
     els.reader.hidden = true;
     els.tsReport.hidden = true;
     els.tsSetup.hidden = false;
-    if (!SpeechRec) {
+    if (!SpeechRec && !window.ASR_URL) {
       ts$.support.hidden = false;
       ts$.support.textContent = 'متصفحك لا يدعم التعرف على الكلام. استخدم Google Chrome أو Safari على الجوال أو الكمبيوتر.';
     }
@@ -1471,7 +1541,7 @@
   ts$.mic.addEventListener('change', async () => {
     ts$.start.disabled = true;
     if (!ts$.mic.checked) return;
-    if (!SpeechRec) { ts$.mic.checked = false; toast('متصفحك لا يدعم التعرف على الكلام'); return; }
+    if (!SpeechRec && !window.ASR_URL) { ts$.mic.checked = false; toast('متصفحك لا يدعم التعرف على الكلام'); return; }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       stream.getTracks().forEach((tr) => tr.stop());
@@ -1543,7 +1613,7 @@
         ${stat(total - read, 'كلمة لم تصل إليها')}
       </div>
       <div class="ts-card"><h3>مواضع الأخطاء</h3>${list ? `<ul class="tsr-list">${list}</ul>` : '<p class="note">لا توجد أخطاء، أحسنت! 🌟</p>'}</div>
-      <p class="note">أخطاء الحركات (التشكيل) لا يمكن كشفها حالياً، لأن التعرف على الكلام في المتصفح يكتب الكلمات بدون تشكيل.</p>
+      <p class="note">التقرير يقارن الكلمات فقط؛ كشف أخطاء الحركات (التشكيل) غير متاح حالياً.</p>
       <div class="tsr-actions">
         <button type="button" class="primary-btn" data-r="again">إعادة التسميع</button>
         <button type="button" class="primary-btn ghost" data-r="setup">مقطع آخر</button>

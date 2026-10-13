@@ -18,3 +18,10 @@ python3 tools/build_data.py <مجلد فيه quran-uthmani.json و quran-simple-
 - الصوت: `tools/saadi_tts.py` يقرأ التفسير بصوت Gemini TTS (صوت Orus) — ملف لكل وحدة تفسير، مع `index.json`.
   يعمل على السيرفر كخدمة `quran-tafsir-tts` (يكمل تلقائياً كلما تجددت الحصة المجانية)، والملفات تُقدَّم من
   `https://162-35-27-249.sslip.io/quran-audio/tafsir/` (الرابط في `js/reciters.js`).
+
+## التسميع (التعرّف على التلاوة)
+- `tools/asr_server.py` يعمل على السيرفر كخدمة `quran-asr` (المجلد `/opt/quran-asr`): نموذج
+  [tarteel-ai/whisper-base-ar-quran](https://huggingface.co/tarteel-ai/whisper-base-ar-quran) بصيغة faster-whisper
+  ([OdyAsh/faster-whisper-base-ar-quran](https://huggingface.co/OdyAsh/faster-whisper-base-ar-quran)، رخصة Apache-2.0) على المعالج.
+- الموقع يبث صوت المايك عبر `wss://162-35-27-249.sslip.io/quran-asr/ws` (الرابط `ASR_URL` في `js/reciters.js`).
+  إذا لم يرد السيرفر يُستعمل التعرّف المدمج في المتصفح (Web Speech API).
