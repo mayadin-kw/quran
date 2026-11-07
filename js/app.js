@@ -1201,9 +1201,15 @@
       this.ws = ws;
       ws.binaryType = 'arraybuffer';
       let opened = false;
-      ws.onopen = () => { opened = true; };
+      this.sentPtr = -1;
+      ws.onopen = () => {
+        opened = true;
+        this.sendExpect();
+      };
       ws.onmessage = (m) => {
         const d = JSON.parse(m.data);
+        if (d.type === 'match') { this.sentPtr = d.items[d.items.length - 1] + 1; if (this.onmatch) this.onmatch(d.items); return; }
+        if (d.type === 'verify') { if (this.onverify) this.onverify(d.text, d.items, d.cut); return; }
         if (d.type === 'final') { this.finals.push(d.text); this.partial = ''; } else this.partial = d.text;
         const results = this.finals.map((t) => Object.assign([{ transcript: t }], { isFinal: true }));
         if (this.partial) results.push(Object.assign([{ transcript: this.partial }], { isFinal: false }));
@@ -1242,6 +1248,20 @@
           this.abort();
           if (this.onerror) this.onerror({ error: 'not-allowed' });
         });
+    }
+    // الكلمات المتوقعة: السيرفر يطابق الصوت معها ويؤكد كل كلمة فور نطقها
+    sendExpect() {
+      const exp = this.expect && this.expect();
+      if (!exp || !exp.words.length || this.sentExpect || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+      this.sentExpect = true;
+      this.ws.send(JSON.stringify({ type: 'expect', words: exp.words, ptr: exp.ptr }));
+      this.sentPtr = exp.ptr;
+    }
+    // الصفحة تقدّمت بنفسها (تخطٍّ، أو كلمة ظهرت بعد ٣ أخطاء): نُعلم السيرفر
+    setPtr(ptr) {
+      if (ptr === this.sentPtr || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+      this.sentPtr = ptr;
+      this.ws.send(JSON.stringify({ type: 'ptr', ptr }));
     }
     abort() {
       this.stopped = true;
@@ -1295,6 +1315,8 @@
       searchLines[i].split(' ').forEach((w, k) => {
         const pieces = w.split('_').map(tsClean).filter(Boolean);
         const alts = [pieces];
+        const uthmani = tsClean(Q.ayat[i][7][k]).replace(/ /g, '');
+        if (uthmani && uthmani !== pieces.join('')) alts.push([uthmani]);
         if (k === 0 && MUQATTAAT.has(pieces.join('')) && (a === 1 || (s === 42 && a === 2))) {
           alts.push([...pieces.join('')].map((c) => LETTER_NAMES[c]).filter(Boolean));
         }
@@ -1339,6 +1361,7 @@
       n = tsMatch(tokens, t, q);
       if (n && (tokens[t].length >= 3 || tsMatch(tokens, t + n, q + 1))) { tsAgain(q); return t + n; }
     }
+    if (tokens[t].length < 2) return t + 1; // حرف منفرد: غالباً بقايا تعرّف لا كلمة
     tsWrong(p, tokens[t]);
     return t + 1;
   }
@@ -1363,10 +1386,9 @@
     const w = ts.words[p];
     const heard = ts.cur && ts.cur.raw[t];
     if (!heard || w.haraka) return;
-    const waqf = ts.cur.ends.has(t);
-    // طابقت بتسامح لا حرفياً: نطقها مختلف (حرف أو حركة)، وتعرّف السيرفر يكتب ما سمعه بدقة
-    const differs = !w.alts.some((alt) => alt.length === 1 && alt[0] === tokens[t]);
-    if (tsHarakaError(Q.ayat[w.i][7][w.k], heard, waqf) || (differs && /[\u064B-\u0652]/.test(heard))) {
+    const waqf = ts.cur.ends.has(t) || t === tokens.length - 1;
+    // الحركات تُقارن فقط إن كانت الحروف نفسها (اختلاف الحروف قد يكون خطأ تعرّف لا خطأ قراءة)
+    if (tsHarakaError(Q.ayat[w.i][7][w.k], heard, waqf)) {
       w.haraka = heard;
       ts.mistakes.push({ p, type: 'haraka' });
     }
@@ -1374,13 +1396,16 @@
   // يطابق الكلمات التي ظهرت من نتائج مؤقتة مع النص النهائي للجملة [from, to) ويفحص حركاتها
   function tsCheckPending(tokens, from, to) {
     let j = from;
+    let after = from; // بعد آخر كلمة وُجدت
     ts.pending.forEach((p) => {
-      for (; j < to; j++) {
-        if (tsMatch(tokens, j, p) === 1) { tsCheckHaraka(p, j, tokens); j++; return; }
+      for (let k = j; k < to; k++) {
+        const n = tsMatch(tokens, k, p);
+        if (n) { if (n === 1) tsCheckHaraka(p, k, tokens); j = after = k + n; return; }
       }
     });
     ts.pending = [];
     tsUpdate(false);
+    return after;
   }
   function tsBegin() {
     if (!ts.t0) ts.t0 = Date.now();
@@ -1428,12 +1453,14 @@
 
   function tsUpdate(follow = true) {
     Object.values(panes).forEach((pane) => pane.firstElementChild && tsPaint(pane.firstElementChild));
+    if (ts.rec && ts.rec.setPtr) ts.rec.setPtr(ts.ptr);
     const done = Math.min(ts.ptr, ts.words.length);
     ts$.progress.textContent = `${ar(done)} / ${ar(ts.words.length)} كلمة`;
     if (ts.ptr >= ts.words.length) {
       // ننتظر النتيجة النهائية لفحص حركات آخر الكلمات قبل التقرير
       const session = ts;
-      const finish = (waited) => { if (ts === session && (!ts.pending.length || waited >= 4000)) tsFinish(); else if (ts === session) setTimeout(() => finish(waited + 300), 300); };
+      const done = () => !ts.pending.length && !ts.serverPending.length;
+      const finish = (waited) => { if (ts === session && (done() || waited >= 6000)) tsFinish(); else if (ts === session) setTimeout(() => finish(waited + 300), 300); };
       setTimeout(() => finish(900), 900);
       return;
     }
@@ -1498,6 +1525,32 @@
     rec.interimResults = true;
     let consumed = 0;
     let checked = 0; // كم كلمة من النتائج النهائية فُحصت حركاتها
+    rec.expect = () => ({ words: ts.words.map((w) => Q.ayat[w.i][7][w.k]), ptr: ts.ptr });
+    // السيرفر أكّد كلمات متوقعة فور نطقها
+    rec.onmatch = (items) => {
+      if (!ts || ts.rec !== rec || !ts.ready) return;
+      items.forEach((p) => {
+        if (p !== ts.ptr) return; // سبق أن ظهرت أو تقدّمت الصفحة
+        tsReveal(p);
+        ts.serverPending.push(p);
+      });
+    };
+    // نص الجملة بتشكيله (Whisper) بعد التوقف: تُفحص حركات الكلمات التي أُكّدت فيها،
+    // وما بعدها من كلام يُحكم عليه كنتيجة نهائية (خطأ، تخطٍّ، إعادة قراءة)
+    rec.onverify = (text, items, cut) => {
+      if (!ts || ts.rec !== rec || !ts.ready) return;
+      const { tokens, raw, ends } = tsTokens([Object.assign([{ transcript: text }], { isFinal: true })], true);
+      if (cut) { tokens.pop(); raw.pop(); } // قُطعت الجملة أثناء الكلام: آخر كلمة قد تكون ناقصة
+      ts.cur = { raw, ends };
+      ts.pending = items.filter((p) => ts.words[p] && ts.words[p].state === 'ok');
+      ts.serverPending = ts.serverPending.filter((p) => !items.includes(p));
+      let t = ts.pending.length ? tsCheckPending(tokens, 0, tokens.length) : 0;
+      while (ts && t < tokens.length && ts.ptr < ts.words.length) {
+        const next = tsStep(tokens, t, true);
+        if (next < 0) break;
+        t = next;
+      }
+    };
     rec.onresult = (e) => {
       if (!ts || ts.rec !== rec) return;
       const { tokens, raw, ends, finalCount } = tsTokens(e.results, e.server);
@@ -1540,7 +1593,7 @@
 
   async function tsStart(s, from, to) {
     tsStop();
-    ts = { s, from, to, words: [], index: new Map(), ptr: 0, againAt: -1, again: new Set(), rereads: 0, mistakes: [], pending: [],
+    ts = { s, from, to, words: [], index: new Map(), ptr: 0, againAt: -1, again: new Set(), rereads: 0, mistakes: [], pending: [], serverPending: [],
       started: false, ready: false, running: true, t0: 0, rec: null };
     tsListen(); // داخل ضغطة المستخدم حتى يسمح المتصفح بالمايكروفون
     els.reader.classList.add('tasmee');
@@ -1553,6 +1606,7 @@
     ts.words = tsWords(s, from, to);
     ts.words.forEach((w, p) => ts.index.set(`${w.i}:${w.k}`, p));
     ts.ready = true;
+    if (ts.rec && ts.rec.sendExpect) ts.rec.sendExpect();
     const page = Q.ayat[surahStart[s] + from - 1][2];
     clearSelection();
     await goTo(page);

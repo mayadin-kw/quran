@@ -20,8 +20,13 @@ python3 tools/build_data.py <مجلد فيه quran-uthmani.json و quran-simple-
   `https://162-35-27-249.sslip.io/quran-audio/tafsir/` (الرابط في `js/reciters.js`).
 
 ## التسميع (التعرّف على التلاوة)
-- `tools/asr_server.py` يعمل على السيرفر كخدمة `quran-asr` (المجلد `/opt/quran-asr`): نموذج سريع (tiny) للتحديث أثناء القراءة كل ثانية تقريباً، ونموذج
-  [tarteel-ai/whisper-base-ar-quran](https://huggingface.co/tarteel-ai/whisper-base-ar-quran) بصيغة faster-whisper
-  ([OdyAsh/faster-whisper-base-ar-quran](https://huggingface.co/OdyAsh/faster-whisper-base-ar-quran)، رخصة Apache-2.0) على المعالج.
-- الموقع يبث صوت المايك عبر `wss://162-35-27-249.sslip.io/quran-asr/ws` (الرابط `ASR_URL` في `js/reciters.js`).
-  إذا لم يرد السيرفر يُستعمل التعرّف المدمج في المتصفح (Web Speech API).
+يعمل على السيرفر كخدمة `quran-asr` (المجلد `/opt/quran-asr`، الملفان `tools/asr_server.py` و`tools/asr_ctc.py`):
+- **تأكيد الكلمات لحظياً:** نموذج CTC مدرَّب على القرآن
+  ([mrmuminov/quran-fastconformer-ctc-ar](https://huggingface.co/mrmuminov/quran-fastconformer-ctc-ar)، رخصة CC-BY-4.0،
+  مبني على نموذج NVIDIA [stt_ar_fastconformer_hybrid_large_pcd_v1.0](https://huggingface.co/nvidia/stt_ar_fastconformer_hybrid_large_pcd_v1.0))
+  بصيغة ONNX في المجلد `fc/`. كل ٠٫٣ ثانية تُطابَق حروف الكلمات المتوقعة مع الصوت، وتظهر الكلمة فور نطقها.
+- **الحركات والأخطاء:** بعد كل وقفة يسمع نموذج
+  [tarteel-ai/whisper-base-ar-quran](https://huggingface.co/tarteel-ai/whisper-base-ar-quran)
+  ([نسخة faster-whisper](https://huggingface.co/OdyAsh/faster-whisper-base-ar-quran)، Apache-2.0) الجملة بتشكيلها.
+- الموقع يتصل عبر `wss://162-35-27-249.sslip.io/quran-asr/ws` (`ASR_URL` في `js/reciters.js`)؛
+  إن لم يرد السيرفر يُستعمل التعرّف المدمج في المتصفح.
